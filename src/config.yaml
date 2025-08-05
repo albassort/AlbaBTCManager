@@ -1,0 +1,141 @@
+connections:
+  unixSocketPath : ""
+  useUnix: false
+  tcpIp: ""
+
+  tcpPort: 21853
+  tcpPortRandom: false
+  useTcp: false
+
+  httpIp: ""
+  httpPort: 21854
+  useHttp: false
+
+  connectionKey: "vavavava"
+db:
+  #defaults to be relative to the executable
+  sqliteDbPath : "transactions.db"
+  username: "alba"
+  password: "sort"
+  database: ""
+btcConfig:
+  # The time for a given deposit to expire
+  depositTimeOutSeconds : 7200
+  #Wallet password sent at runtime over RCP.
+  walletName : "MyClientWallet"
+
+  #Can be changed at runtime
+  defaultBtcip: ""
+  defaultBtcport: 19773
+
+  #Change to set how often you want to check for deposits and withdrawals
+  depositWithdrawalPollSeconds : 300
+
+  # Allows you to send 'individual' withdrawals which are sent immediately, with higher feels for the user
+  enableInvdividualWithdrawals : true
+debug:
+  debugPath: "./debug_output.txt"
+  enableDebug: true
+callbacks:
+  discord:  
+    discordToken: "MYTOKEN"
+    defaultChannel: "MyChannel" 
+    #Uses this when unspecified
+    useDefaultChannel : false
+
+    #Link channels to each callback. E.g the event gets sent to each channel
+    deposits:
+      noChange: ""
+      fundingIncreased: "" 
+      expired: ""
+      fullyFunded: ""
+    exceptions:
+      errorUpdatingRow: ""
+      notEnoughFunds: ""
+      failedToCreateTx: ""
+      failedToSubmitRawTx: ""
+      #Internal Error!
+      multipleCoinsInWithdrawal: ""
+      incorrectCoinInWithdrawal: ""
+  smtp:
+    username: ""
+    password: ""
+    address: ""
+    #Set this to each email address you want the emails sent to
+    deposits:
+      noChange: ""
+      fundingIncreased: "" 
+      expired: ""
+      fullyFunded: ""
+    exceptions:
+      errorUpdatingRow: ""
+      notEnoughFunds: ""
+      failedToCreateTx: ""
+      failedToSubmitRawTx: ""
+      #Internal Error!
+      multipleCoinsInWithdrawal: ""
+      incorrectCoinInWithdrawal: ""
+  tcp:
+    ip: "" 
+    port: ""
+    broadcastOverRecievingTcp: false 
+    #Use this to enable/disable callback events
+    deposits:
+      noChange: false
+      fundingIncreased: false
+      expired: false
+      fullyFunded: false
+    exceptions:
+      errorUpdatingRow: false
+      notEnoughFunds: false
+      failedToCreateTx: false
+      failedToSubmitRawTx: false
+      #Internal Error!
+      multipleCoinsInWithdrawal: false
+      incorrectCoinInWithdrawal: false
+  unixSocket:
+    location: ""
+    deposits:
+      noChange: false
+      fundingIncreased: false
+      expired: false
+      fullyFunded: false
+    exceptions:
+      errorUpdatingRow: false
+      notEnoughFunds: false
+      failedToCreateTx: false
+      failedToSubmitRawTx: false
+      #Internal Error!
+      multipleCoinsInWithdrawal: false
+      incorrectCoinInWithdrawal : false
+  http:
+      endpoint: ""
+      auth: ""
+      deposits:
+        noChange: false
+        fundingIncreased: false
+        expired: false
+        fullyFunded: false
+      exceptions:
+        errorUpdatingRow: false
+        notEnoughFunds: false
+        failedToCreateTx: false
+        failedToSubmitRawTx: false
+        #Internal Error!
+        multipleCoinsInWithdrawal: false
+        incorrectCoinInWithdrawal : false
+  namedPipe:
+      path: ""
+      deposits:
+        noChange: false
+        fundingIncreased: false
+        expired: false
+        fullyFunded: false
+      exceptions:
+        errorUpdatingRow: false
+        notEnoughFunds: false
+        failedToCreateTx: false
+        failedToSubmitRawTx: false
+        #Internal Error!
+        multipleCoinsInWithdrawal: false
+        incorrectCoinInWithdrawal : false
