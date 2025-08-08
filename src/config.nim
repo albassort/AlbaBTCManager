@@ -52,36 +52,40 @@ type
     enableDebug* : bool
   Discord*  = object
     discordToken* : string
+    discordPort* : int
     defaultChannel* : string
     useDefaultChannel* : bool
-    deposits* : DepositLocations
-    exceptions* : ExceptionsLocations
+    callbacks*: CallBackLocations
   SMTP* = object
     username* : string
     password* : string
+    port* : int
     address* : string
-    deposits* : DepositLocations
-    exceptions* : ExceptionsLocations
+    callbacks*: CallBackLocations
+    defaultMail* : string
+
+    useDefaultMail* : bool
   TCP* = object
     ip* : string 
     port* : string
     broadcastOverRecievingTcp* : bool
-    deposits* : DepositBool
-    exceptions* : ExceptionsBools
- 
+    callbacks*: CallBackBools
   UnixSocket* = object
     location* : string
-    deposits* : DepositBool
-    exceptions* : ExceptionsBools
+    callbacks*: CallBackBools
   HTTP* = object
     endpoint* : string
     auth* : string
-    deposits* : DepositBool
-    exceptions* : ExceptionsBools
+    callbacks*: CallBackBools
   NamedPipe* = object
     path* : string
+    callbacks*: CallBackBools
+  CallBackBools* = object
     deposits* : DepositBool
     exceptions* : ExceptionsBools
+  CallBackLocations* = object
+    deposits* : DepositLocations
+    exceptions* : ExceptionsLocations
   CallBacks* = object
     discord* : Discord
     smtp* : SMTP
@@ -95,6 +99,11 @@ type
     btcConfig* : BTCConfig
     debug* : Debug
     callbacks* : CallBacks
+    unixSocket : UnixSocket
+  hasCallbacksBools* = concept x 
+    x.callbacks is CallBackBools
+  hasCallbacksLocations* = concept x 
+    x.callbacks is CallBackLocations
 
 
 proc evaluateConfig*() : Config =

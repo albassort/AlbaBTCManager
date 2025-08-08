@@ -39,103 +39,113 @@ debug:
 callbacks:
   discord:  
     discordToken: "MYTOKEN"
+    discordPort: 5012
     defaultChannel: "MyChannel" 
     #Uses this when unspecified
     useDefaultChannel : false
 
     #Link channels to each callback. E.g the event gets sent to each channel
-    deposits:
-      noChange: ""
-      fundingIncreased: "" 
-      expired: ""
-      fullyFunded: ""
-    exceptions:
-      errorUpdatingRow: ""
-      notEnoughFunds: ""
-      failedToCreateTx: ""
-      failedToSubmitRawTx: ""
-      #Internal Error!
-      multipleCoinsInWithdrawal: ""
-      incorrectCoinInWithdrawal: ""
+    callbacks:
+      deposits:
+        noChange: ""
+        fundingIncreased: "" 
+        expired: ""
+        fullyFunded: ""
+      exceptions:
+        errorUpdatingRow: ""
+        notEnoughFunds: ""
+        failedToCreateTx: ""
+        failedToSubmitRawTx: ""
+        #Internal Error!
+        multipleCoinsInWithdrawal: ""
+        incorrectCoinInWithdrawal: ""
   smtp:
     username: ""
     password: ""
     address: ""
+    defaultMail: ""
+    useDefaultMail : ""
+    port : 465
     #Set this to each email address you want the emails sent to
-    deposits:
-      noChange: ""
-      fundingIncreased: "" 
-      expired: ""
-      fullyFunded: ""
-    exceptions:
-      errorUpdatingRow: ""
-      notEnoughFunds: ""
-      failedToCreateTx: ""
-      failedToSubmitRawTx: ""
-      #Internal Error!
-      multipleCoinsInWithdrawal: ""
-      incorrectCoinInWithdrawal: ""
+    callbacks:
+      deposits:
+        noChange: ""
+        fundingIncreased: "" 
+        expired: ""
+        fullyFunded: ""
+      exceptions:
+        errorUpdatingRow: ""
+        notEnoughFunds: ""
+        failedToCreateTx: ""
+        failedToSubmitRawTx: ""
+        #Internal Error!
+        multipleCoinsInWithdrawal: ""
+        incorrectCoinInWithdrawal: ""
   tcp:
     ip: "" 
     port: ""
     broadcastOverRecievingTcp: false 
     #Use this to enable/disable callback events
-    deposits:
-      noChange: false
-      fundingIncreased: false
-      expired: false
-      fullyFunded: false
-    exceptions:
-      errorUpdatingRow: false
-      notEnoughFunds: false
-      failedToCreateTx: false
-      failedToSubmitRawTx: false
-      #Internal Error!
-      multipleCoinsInWithdrawal: false
-      incorrectCoinInWithdrawal: false
+    callbacks:
+      deposits:
+        noChange: false
+        fundingIncreased: false
+        expired: false
+        fullyFunded: false
+      exceptions:
+        errorUpdatingRow: false
+        notEnoughFunds: false
+        failedToCreateTx: false
+        failedToSubmitRawTx: false
+        #Internal Error!
+        multipleCoinsInWithdrawal: false
+        incorrectCoinInWithdrawal: false
   unixSocket:
     location: ""
-    deposits:
-      noChange: false
-      fundingIncreased: false
-      expired: false
-      fullyFunded: false
-    exceptions:
-      errorUpdatingRow: false
-      notEnoughFunds: false
-      failedToCreateTx: false
-      failedToSubmitRawTx: false
-      #Internal Error!
-      multipleCoinsInWithdrawal: false
-      incorrectCoinInWithdrawal : false
+    callbacks:
+      deposits:
+        noChange: false
+        fundingIncreased: false
+        expired: false
+        fullyFunded: false
+      exceptions:
+        errorUpdatingRow: false
+        notEnoughFunds: false
+        failedToCreateTx: false
+        failedToSubmitRawTx: false
+        #Internal Error!
+        multipleCoinsInWithdrawal: false
+        incorrectCoinInWithdrawal : false
   http:
       endpoint: ""
       auth: ""
-      deposits:
-        noChange: false
-        fundingIncreased: false
-        expired: false
-        fullyFunded: false
-      exceptions:
-        errorUpdatingRow: false
-        notEnoughFunds: false
-        failedToCreateTx: false
-        failedToSubmitRawTx: false
-        #Internal Error!
-        multipleCoinsInWithdrawal: false
-        incorrectCoinInWithdrawal : false
+      callbacks:
+        deposits:
+          noChange: false
+          fundingIncreased: false
+          expired: false
+          fullyFunded: false
+        exceptions:
+          errorUpdatingRow: false
+          notEnoughFunds: false
+          failedToCreateTx: false
+          failedToSubmitRawTx: false
+          #Internal Error!
+          multipleCoinsInWithdrawal: false
+          incorrectCoinInWithdrawal : false
   namedPipe:
       path: ""
-      deposits:
-        noChange: false
-        fundingIncreased: false
-        expired: false
-        fullyFunded: false
-      exceptions:
-        errorUpdatingRow: false
-        notEnoughFunds: false
-        failedToCreateTx: false
-        failedToSubmitRawTx: false
-        #Internal Error!
-        multipleCoinsInWithdrawal: false
-        incorrectCoinInWithdrawal : false
+      callbacks:
+        deposits:
+          noChange: false
+          fundingIncreased: false
+          expired: false
+          fullyFunded: false
+        exceptions:
+          errorUpdatingRow: false
+          notEnoughFunds: false
+          failedToCreateTx: false
+          failedToSubmitRawTx: false
+          #Internal Error!
+          multipleCoinsInWithdrawal: false
+          incorrectCoinInWithdrawal : false
