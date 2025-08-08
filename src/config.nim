@@ -63,8 +63,9 @@ type
     address* : string
     callbacks*: CallBackLocations
     defaultMail* : string
-
     useDefaultMail* : bool
+    useTLS* : bool
+    useAuth* : bool
   TCP* = object
     ip* : string 
     port* : string
@@ -99,7 +100,6 @@ type
     btcConfig* : BTCConfig
     debug* : Debug
     callbacks* : CallBacks
-    unixSocket : UnixSocket
   hasCallbacksBools* = concept x 
     x.callbacks is CallBackBools
   hasCallbacksLocations* = concept x 

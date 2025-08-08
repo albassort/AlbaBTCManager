@@ -38,11 +38,11 @@ debug:
   enableDebug: true
 callbacks:
   discord:  
-    discordToken: "MYTOKEN"
+    discordToken: "REDACTED.Gdw2Sg.Huujh_R038GlTqpyrPkQMdfYcBLlkWa4FHMW2g"
     discordPort: 5012
     defaultChannel: "MyChannel" 
     #Uses this when unspecified
-    useDefaultChannel : false
+    useDefaultChannel : true
 
     #Link channels to each callback. E.g the event gets sent to each channel
     callbacks:
@@ -62,10 +62,13 @@ callbacks:
   smtp:
     username: ""
     password: ""
-    address: ""
-    defaultMail: ""
-    useDefaultMail : ""
-    port : 465
+    address: "127.0.0.1"
+    defaultMail: "test@test.com"
+    useDefaultMail : true
+    port: 1025
+
+    useTLS: false
+    useAuth: false
     #Set this to each email address you want the emails sent to
     callbacks:
       deposits:

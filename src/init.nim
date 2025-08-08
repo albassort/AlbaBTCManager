@@ -14,6 +14,7 @@ import streams
 import net
 import nativesockets
 import os
+import json
 
 static:
   # Makes sure that the paths line up from the config to the internal enums
@@ -50,17 +51,25 @@ proc assignCallBacks(a : hasCallbacksBools) : Table[string, string] =
 type 
   Event = concept x
     x is DepositOutcome or x is Exceptions
-  messageBackends* = enum
+
+  MessageBackends* = enum
     SendDiscord, SendSMTP, SendTCP, SendUnixSocket, SendHTTP, SendNamedPipe
   MessageHandler* = object
-    callbacksEnabled* : set[messageBackends]
-    locationRoutes* : Table[messageBackends, Table[string, string]]
+    callbacksEnabled* : set[MessageBackends]
+    locationRoutes* : Table[MessageBackends, Table[string, string]]
 
 var discordThread : Thread[(string, cint)]
 let smtpConn = newSmtp(debug=true)
 var namedPipe : FIleSTream
 var unixSocket = newSocket(Domain.AF_INET, SockType.SOCK_STREAM, Protocol.IPPROTO_TCP, buffered=true, inheritable=false)
 var tcpSocket = newSocket()
+
+proc manageConnections(a : (ptr Channel[JsonNode], MessageHandler)) =
+  while true:
+    let request = a[0][].tryRecv()
+    if not request.dataAvailable: continue
+     
+
 proc initMessageManager(config : Config) : MessageHandler =
   let smtpConfig = config.callbacks.smtp
   if config.callbacks.discord.discordToken != "":
@@ -75,27 +84,32 @@ proc initMessageManager(config : Config) : MessageHandler =
         ""
 
     let discordTable = assignCallBacks(config.callbacks.discord, defaultChannel)
+    echo  (config.callbacks.discord.discordToken, cint config.callbacks.discord.discordPort, discordThread)
     initDiscord(config.callbacks.discord.discordToken, cint config.callbacks.discord.discordPort, discordThread)
+
     result.locationRoutes[SendDiscord] = discordTable
 
   if smtpConfig.address != "":
     block SMTPInit:
       try:
+        echo (smtpConfig.address, Port smtpConfig.port)
         smtpConn.connect(smtpConfig.address, Port smtpConfig.port)
       except CatchableError as e:
         echo "failed to connect to SMTP SERVER"
         quit 1
-      try:
-        smtpConn.startTls()
-      except CatchableError as e:
-        echo "Failed to start TLS on SMTP server"
-        quit 1
-      try:
-        smtpConn.auth(smtpConfig.username, smtpConfig.password)
-      except CatchableError as e:
-        echo "Connected to SMTP server however, your authorization was invalid!"
-        echo e[]
-        quit 1
+      if smtpConfig.useTLS:
+        try:
+          smtpConn.startTls()
+        except CatchableError as e:
+          echo "Failed to start TLS on SMTP server"
+          quit 1
+      if smtpConfig.useAuth:
+        try:
+          smtpConn.auth(smtpConfig.username, smtpConfig.password)
+        except CatchableError as e:
+          echo "Connected to SMTP server however, your authorization was invalid!"
+          echo e[]
+          quit 1
 
     let defaultAddress =
       if smtpConfig.useDefaultMail:
@@ -144,13 +158,18 @@ proc initMessageManager(config : Config) : MessageHandler =
     var port = Port(0)
     if config.callbacks.http.endpoint.contains(":"):
       port = Port(parseUint(config.callbacks.http.endpoint.split(":")[1]))
-    testSocket.connect(config.callbacks.http.endpoint, port, 500 )
+    try:
+      testSocket.connect(config.callbacks.http.endpoint, port, 500 )
+    except:
+      echo &"Failed to connect to HTTP endpoint at {config.callbacks.http.endpoint}"
     result.callbacksEnabled.incl(SendHTTP)
     result.locationRoutes[SendHTTP] = httpCallbacks
 
 const schema = staticRead("./schema.sql")
 let globalConfig* = createShared(Config, sizeof(Config))
 globalConfig[] = evaluateConfig()
+echo initMessageManager(globalConfig[])
+
 var db : DbConn
 if not fileExists(globalConfig[].db.sqliteDbPath):
 
