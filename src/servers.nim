@@ -9,17 +9,71 @@ import options
 import strutils
 import std/epoll
 import sugar
+import std/endians
 
 type BiChannel = object
   fromClient* : ptr Channel[JsonNode]
   toClient* : ptr Channel[JsonNode]
+
+proc sendTCP*(socket : Socket, message : string) = 
+  let size = message.len
+
+  var sizedataout = newSeq[char](size+3)
+
+  littleendian32(addr sizedataout[0], addr size)
+
+  copyMem(addr sizedataout[4], addr message[0], size)
+
+  discard socket.send(addr sizedataout[0], size+4)
+  
+proc recvTCP*(socket : Socket, tiemout : int = 50) : string = 
+  var sizeIn : array[4, byte]
+  var sizeOut : array[4, byte]
+  discard socket.recv(addr sizeIn[0], 4, tiemout)
+
+  littleendian32(addr sizeOut[0], addr sizeIn[0])
+
+  let size = cast[int32](sizeOut)
+
+  result = socket.recv(size, tiemout)
+
+
+proc spawnTestSocket() = 
+  var socket = newSocket()
+  socket.setSockOpt(OptReusePort, true)
+  let port = Port(11522)
+  socket.bindAddr(port)
+  socket.listen()
+  while true:
+    var address = ""
+    var client = newSocket()
+    socket.acceptAddr(client, address)
+    let recieved = recvTCP(client)
+    echo recieved
+    client.sendTCP("Hello!!!")
+
+proc sendRecvTest() = 
+  let socket2 = newSocket()
+
+  let port = Port(11522)
+  socket2.connect("127.0.0.1", port) 
+  socket2.sendTCP("abcd")
+  echo recvTCP(socket2)
+
+# var t : Thread[void]
+# createThread(t, spawnTestSocket)
+# sleep 100
+# sendRecvTest()
+# joinThread(t)
+# quit 1
+#
 
 proc readAllFromChannel[T](a : var Channel[T]) : Option[seq[T]] =
   let q = a.peek
   if q == 0 or q == -1:
     return 
   else:
-    let objs = collect(for x in 0 .. q: a.recv)
+    let objs = collect(for x in 0 .. q-1: a.recv)
     return some objs
 
 proc processRequest(request : Request, authKey : string) : Option[JsonNode] = 
@@ -110,7 +164,9 @@ proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
       continue
     let json = node.get()
     let iid = cpuTime() 
+
     json["iid"] = newJFloat iid
+    json["from"] = newJString "http"
     channel.fromClient[].send(json)
 
     let toChannel = createShared(Request, sizeof(Request))
@@ -118,7 +174,7 @@ proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
     toChannel[] = request
     newChannel[].send((toChannel, iid))
 
-proc maangeTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
+proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
   #inspired by TCB hehe
   var connections = initTable[cint, ptr Socket]()
   #id -> cint -> connections -> socket
@@ -143,20 +199,29 @@ proc maangeTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
       eEvent.events = EPOLLIN      
       eEvent.data.fd = cint sfd
 
+      # register the socket's fd to be in the epoll so we can efficiently 
+      # check which ones have data!
+      
       let eresult = epoll_ctl(epoll, EPOLL_CTL_ADD, sfd, addr eEvent)
 
       connections[cint sfd] = newSocket
 
+    # we wait for 50 ms 
     let totalRequests = epoll_wait(epoll, eventHandl, maxEpollEvents, 50)
+    # if any onf the fd have any data on them
     if totalRequests != 0:
       for x in 0 .. totalRequests-1:
+        # epollData should become filled with the fds with data on them
         let sfd = epollData[x].data.fd
         let socket = connections[sfd]
         var newMessage : string 
         try:
-          newMessage = socket[].recvLine(timeout = 10) 
+          newMessage = socket[].recvTCP(10) 
+        # Encase for whatever reason theres no data
         except TimeoutError:
+          echo "!"
           continue
+        # If the socket cant be reached we need to close and free it
         except OSError:
           try: socket[].close()
           except: discard
@@ -164,9 +229,11 @@ proc maangeTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
           let eresult = epoll_ctl(epoll, EPOLL_CTL_DEL, sfd, nil)
 
         try:
+          # the iid -- internal id --- is needed to figure out which channel to send the response to
           var json = parseJson newMessage
           let replyId = cpuTime()
           json["iid"] = newJFloat replyId 
+          json["from"] = newJString "tcp"
 
           targetChannel.fromClient[].send(json)
 
@@ -187,8 +254,7 @@ proc maangeTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
       let socket = connections[sfd]
       pendingReplies.del(replyId)
       try:
-        let size = char uint32(result.len)
-        socket[].send(size & $result)
+        socket[].sendTCP($result)
       except:
         try: socket[].close()
         except: discard
@@ -212,15 +278,18 @@ proc tcpServer(a : (Port, string, ptr Channel[ptr Socket], bool, string)) =
   if isUnix:
     socket.bindUnix(path)
   else:
+    echo "bindingPort"
+    echo port
     socket.bindAddr(port)
 
+  socket.listen()
   while true:
 
     var client = newSocket()
     var address : string
     socket.acceptAddr(client, address)
 
-    #TODO: CHeCK CREDENTIALS 
+    #TODO: Check CREDENTIALS 
     #
     var shared = createShared(Socket, sizeof(Socket))
     shared[] = client
@@ -249,5 +318,37 @@ proc httpTest() =
       biChannel.toClient[].send(response)
     sleep 500
   
-teshttpTest()
+proc tcpTest() = 
+  let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
+  let fromClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
+  let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
 
+  socketChannel[].open()
+  fromClient[].open()
+  toClient[].open()
+
+  let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
+
+  let port = Port(5192)
+  let password = "!"
+  let isUnix = false
+  let path = ""
+    
+  var tcpThread : Thread[(Port, string, ptr Channel[ptr Socket], bool, string)]
+  var manageTcpConns : Thread[(ptr Channel[ptr Socket], BiChannel)]
+  
+  createThread(tcpThread, tcpServer, (port, password, socketChannel, false, "") )
+  createThread(manageTcpConns, manageTcpConn, (socketChannel, biChannel))
+  
+  sleep 100
+  var testObj = newJObject()
+  testObj["test"] = newJInt 0
+  let testSocket = newSocket()
+  testSocket.connect("127.0.0.1", port) 
+  testSocket.sendTCP($testObj)
+  sleep 100
+  let obj = fromClient[].tryRecv.msg
+  toClient[].send(obj)
+  echo testSocket.recvTCP()
+
+tcpTest()
