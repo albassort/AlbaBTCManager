@@ -83,3 +83,12 @@ create table WithdrawalRequest(
   isComplete bool default false 
 );
 
+
+create table TransactionWatch(
+  TxId text not null,
+  BlockHeightCreated int not null,
+  confTargetNotify int not null,
+  callBack json,
+  CryptoType text not null
+)
+

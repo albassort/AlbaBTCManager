@@ -13,6 +13,7 @@ import times
 import ./btccode
 import groupBy
 
+
 type
   CryptoClients* = object
     btcClient : Option[BTCClient]
@@ -133,8 +134,6 @@ proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gc
       var totalDeposited : float64
       let judge = validateDepositsBTC(client, db, row, btcChange, totalDeposited)
 
-
-
 proc judgeAllWithdrawals*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gcsafe.} =
   let rows = fastRowsTyped[WithdrawalRequest](db, sql"""
     select * from WithdrawalRequest where finished = false and IsActive = true
@@ -152,3 +151,9 @@ proc judgeAllWithdrawals*(clients : CryptoClients, db : DbConn) : HashSet[int] {
 
     let validWithdarawals = rows.groupBy(x=> x.userRowId notin usersSkip, x=> x)
     discard handleWidhtrawals(clients, cryptoType, db, rows)
+
+
+proc monitorTxId*(clients : CryptoClients, db : DbConn, txid : string, confTarget : int, callback: JsonNode)  {.gcsafe.} =
+  echo callback
+
+

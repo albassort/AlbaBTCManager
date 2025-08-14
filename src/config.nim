@@ -87,6 +87,10 @@ type
   CallBackLocations* = object
     deposits* : DepositLocations
     exceptions* : ExceptionsLocations
+  LND* = object
+    macaroon : Option[string]
+    restPort : int
+    restIp : string
   CallBacks* = object
     discord* : Discord
     smtp* : SMTP

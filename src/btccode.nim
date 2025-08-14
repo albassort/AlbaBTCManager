@@ -1,4 +1,6 @@
-
+import puppy
+import strformat
+import strutils
 import NimBTC
 import Json
 import pretty
@@ -7,6 +9,8 @@ import tables
 import results
 import std/options
 import os
+import libcurl
+import std/base64
 type HalfBtcResponse* = object
   error* : RpcErrorCode
   errorMessage* : string
@@ -43,3 +47,41 @@ proc createTransaction*(client : BTCClient, outputs : Table[string, float], conf
 
 #proc submitBTC() = 
 #  signrawtransactionwithwallet
+
+proc doStuff(url : string, postBody = "", doPost = false) =
+  proc curlWriteFn(buffer: cstring, size: int, count: int,outstream: pointer): int =
+    let outbuf = cast[ref string](outstream)
+    outbuf[] &= buffer
+    echo outbuf[]
+    result = size * count
+    
+  let webData: ref string = new string
+  let curl = easy_init()
+
+  discard curl.easy_setopt(OPT_WRITEDATA, webData)
+  discard curl.easy_setopt(OPT_WRITEFUNCTION, curlWriteFn)
+  discard curl.easy_setopt(OPT_URL, url)
+
+  let auth = readFile("/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir1/data/chain/bitcoin/regtest/admin.macaroon").toHex()
+
+  var headers : Pslist 
+  let authStr = &"Grpc-Metadata-macaroon: {auth}" 
+  let setheaders = slist_append(headers, authStr)
+  discard curl.easy_setopt(OPT_HTTPHEADER, setheaders);
+  discard curl.easy_setopt(OPT_CAINFO, "/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir1/tls.cert");
+  discard curl.easy_setopt(OPT_SSL_VERIFYPEER, 1);
+
+  if doPost:
+    discard curl.easy_setopt(OPT_POSTFIELDS, postBody)
+    discard curl.easy_setopt(OPT_POSTFIELDSIZE, postBody.len)
+    discard curl.easy_setopt(OPT_HTTPPOST, 1)
+  else:
+    discard curl.easy_setopt(OPT_HTTPGET, 1)
+
+
+
+  let ret = curl.easy_perform()
+  if ret == E_OK:
+    echo(webData[])
+
+doStuff("https://localhost:8080/v1/invoices/subscribe")

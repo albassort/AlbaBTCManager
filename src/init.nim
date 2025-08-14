@@ -51,12 +51,13 @@ proc assignCallBacks(a : hasCallbacksBools) : Table[string, string] =
 type 
   Event = concept x
     x is DepositOutcome or x is Exceptions
-
   MessageBackends* = enum
     SendDiscord, SendSMTP, SendTCP, SendUnixSocket, SendHTTP, SendNamedPipe
   MessageHandler* = object
     callbacksEnabled* : set[MessageBackends]
     locationRoutes* : Table[MessageBackends, Table[string, string]]
+  State* = object
+    lndMacroon : string
 
 var discordThread : Thread[(string, cint)]
 let smtpConn = newSmtp(debug=true)

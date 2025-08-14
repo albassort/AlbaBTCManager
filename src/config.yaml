@@ -12,6 +12,23 @@ connections:
   useHttp: false
 
   connectionKey: "vavavava"
+btccore:
+  rpcIp : ""
+  rpcPort: 0
+  rpcUserName : ""
+  rpcPassowrd : ""
+  # Needed to track transactions
+  zmqpubhashblock : ""
+  
+lnd:
+  #can bet set in the API at runtime.
+  macroon: null
+  restPort: 0
+  restIp: "127.0.0.1"
+  # Is read on startup
+  tlsPath : ""
+  # Can be set at runtime
+  walletPassword : ""
 db:
   #defaults to be relative to the executable
   sqliteDbPath : "transactions.db"
