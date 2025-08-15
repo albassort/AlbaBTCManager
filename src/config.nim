@@ -67,10 +67,9 @@ type
     password* : string
     database* : string
   BTCConfig* = object
-    depositTimeOutSeconds* : int
     walletName* : string
-    defaultBtcip* : string
-    defaultBtcport* : int
+    walletPassword* : Option[string]
+    depositTimeOutSeconds* : int
     depositWithdrawalPollSeconds* : int
     enableInvdividualWithdrawals* : bool
   Debug* = object

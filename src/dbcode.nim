@@ -79,9 +79,9 @@ proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CryptoTyp
   db.exec(sql"insert into UserCryptoChange(UserRowId, CryptoType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1)",
     userRowId, $cryptoType, amount, depositRequestRowId, withdarawalRequestRowId)
   
-proc createNewDepositRequest(db : DbConn, address : string, cryptoType : CryptoTypes, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
+proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CryptoTypes, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
 
-  let insert = sql"""insert into UserCryptoChange(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount) values (?, ?, ?, ?, ?)"""
+  let insert = sql"""insert into DepositRequest(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount) values (?, ?, ?, ?, ?)"""
   return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, depositAmount)
   discard ""
   #discard getNewAddress

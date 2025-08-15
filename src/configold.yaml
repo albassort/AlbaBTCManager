@@ -29,6 +29,7 @@ lnd:
   tlsPath : ""
   # Can be set at runtime
   walletPassword : ""
+
 db:
   #defaults to be relative to the executable
   sqliteDbPath : "transactions.db"

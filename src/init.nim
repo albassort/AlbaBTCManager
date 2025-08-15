@@ -173,12 +173,61 @@ proc initCryptoClients*() : CryptoClients =
   let url = globalConfig[].btcCore.rpcIp & &":{port}"
   let userName = globalConfig[].btcCore.rpcUserName
   let password = globalConfig[].btcCore.rpcPassword
+  echo globalConfig[].btcCore
 
   var btc = initBTCClient(url, userName, password)
   result.btcClient = some(btc)
+  
+
+  let walletName = globalConfig[].btcConfig.walletName
+  let walletPassword = globalConfig[].btcConfig.walletPassword
+
+  proc testPassword() : bool =
+    let unlockAttempt = btc.walletPassphrase(walletPassword.get(), 300)
+    echo (unlockAttempt, unlockAttempt.hasResult)
+    return unlockAttempt.isErr
+
+
+  var needsPassword = false
+  var wrongPassword = false
+  var failedToLoad = false
+  let wallet = getWalletInfo(btc)
+  if wallet.hasResult and "unlocked_until" in wallet.resultObject:
+    # If we have a wallet loaded we test if the password is ok
+    if walletPassword.isNone:
+      needsPassword = true
+    else:
+      if not testPassword(): 
+        wrongPassword = true
+  else:
+    #if we dont have a wallet loaded
+
+    block SetWallet:
+      let loadWallet = btc.loadWallet(walletName)
+      if not loadWallet.hasResult: 
+        failedToLoad = true
+        break SetWallet
+      if "unlocked_until" in loadWallet.resultObject and walletPassword.isNone:
+        needsPassword = true
+        break SetWallet
+      if "unlocked_until" in loadWallet.resultObject:
+        if not testPassword(): 
+          wrongPassword = true
+  
+  var failedToCreate = false
+  if failedToLoad:
+    let createAttempt = btc.createWallet(walletName, passphrase = walletPassword)
+    if not createAttempt.hasResult:
+      failedToCreate = true
+
+
+  echo (needsPassword, failedToLoad, wrongPassword, failedToCreate)
+  doAssert not failedToCreate and not wrongPassword and not needsPassword
+
 
 const schema = staticRead("./schema.sql")
 #TODO: make htis not break
+#
 when isMainModule:
   echo initMessageManager(globalConfig[])
   var db : DbConn

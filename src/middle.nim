@@ -12,6 +12,8 @@ import sugar
 import times
 import ./btccode
 import groupBy
+import ./dbcode
+export dbcode
 
 type
   CryptoClients* = object
@@ -154,5 +156,19 @@ proc judgeAllWithdrawals*(clients : CryptoClients, db : DbConn) : HashSet[int] {
 
 proc monitorTxId*(clients : CryptoClients, db : DbConn, txid : string, confTarget : int, callback: JsonNode)  {.gcsafe.} =
   echo callback
+
+
+proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CryptoTypes, depositAmount : float, userRowId : int = 1) : Option[int] {.gcsafe.} =
+  case cryptoType:
+    of BTC:
+      #TODO: check if some; send out notif if not and enabled
+      let client = clients.btcClient.get()
+      let newAddress = getNewAddress(client, "")
+      if not newAddress.hasResult:
+        echo newAddress 
+        return 
+      let address = newAddress.resultObject.getStr()
+
+      return some createNewDepositRequest(db, address, BTC, 7200, depositAmount, userRowId)
 
 

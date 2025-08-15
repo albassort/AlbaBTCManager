@@ -17,9 +17,8 @@ db:
   database: ""
 btcConfig:
   depositTimeOutSeconds: 72000
-  walletName: ""
-  defaultBtcip: "127.0.0.1"
-  defaultBtcport: 18011
+  walletName: "albassort"
+  walletPassword: "password"
   depositWithdrawalPollSeconds: 1
   enableInvdividualWithdrawals: true
 debug:
@@ -221,10 +220,10 @@ callbacks:
         newUTXOUnlocked: false
 
 btcCore:
-  rpcIp: ""
-  rpcPort: 0
-  rpcUserName: ""
-  rpcPassword: ""
+  rpcIp: "http://127.0.0.1"
+  rpcPort: 18011
+  rpcUserName: "user1"
+  rpcPassword: "password1"
   zmqpubhashblock: ""
 lnd:
   macroon: ""
