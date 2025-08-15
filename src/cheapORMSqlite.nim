@@ -28,6 +28,8 @@ proc assignFromString[T](a : string, b : var T) =
     b = fromUnix(parseInt(a))
   when b is bool:
     b = parseBool(a)
+  when b is float:
+    b = parseFloat(a)
   #echo ("after->", row[i], x, y)
 
 proc convertRow*[T](row: Row) : Option[T] =
@@ -35,12 +37,13 @@ proc convertRow*[T](row: Row) : Option[T] =
     var generic = new result.T
     var i = 0
     for x,y in fieldPairs(generic[]):
-      #echo ("before->", row[i], x, y)
+      echo ("before->", row[i], x, y)
       assignFromString(row[i], y)
       i+=1
     doAssert(i == row.len)
     return some(generic[])
-  except:
+  except Exception as e:
+    echo e[] 
     return none(T)
 
 iterator fastRowsTyped*[T](db: DbConn,

@@ -2,7 +2,7 @@
 CREATE TABLE RpcLog (
     UserRowId Integer references Users (RowId),
     ValidLogin boolean not null default true,
-    TimeRecieved time NOT NULL DEFAULT (strftime('%s','now')),
+    TimeReceived time NOT NULL DEFAULT (strftime('%s','now')),
     RequestBody json not null
 );
 
@@ -42,8 +42,8 @@ CREATE TABLE DepositRequest (
 -- drop table DepositEvent;
 CREATE TABLE DepositEvent(
     DepositRequest Integer references DepositRequest (RowId) not null,
-    AmounntRecieved decimal not null,
-    TimeRecieved time NOT NULL DEFAULT (strftime('%s','now'))
+    AmountReceived decimal not null,
+    TimeReceived time NOT NULL DEFAULT (strftime('%s','now'))
 );
 
 -- drop table TransactionData;
@@ -74,7 +74,7 @@ insert into users(Username, Password, SaltIv) values ('ADMIN', 'CHANGE', 'ME!');
 -- drop table WithdrawalRequest;
 create table WithdrawalRequest(
   userRowId int,
-  timeRecieved time NOT NULL DEFAULT (strftime('%s','now')),
+  timeReceived time NOT NULL DEFAULT (strftime('%s','now')),
   cryptoType varchar(12) not null,
   cryptoAmount decimal not null,
   withdrawalStrategy varchar(24) not null,

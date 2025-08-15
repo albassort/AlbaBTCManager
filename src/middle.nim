@@ -25,21 +25,22 @@ type
     FailedToSubmitRawTx = "failedToSubmitRawTx", MultipleCoinsInWithdrawal = "multipleCoinsInWithdrawal", IncorrectCoinInWithdrawal = "incorrectCoinInWithdrawal"
 
 proc judgeDeposit(db : DbCOnn, isFinished, isExpired : bool, rowid : int) =  
-  db.exec(sql"update DepositRequest set Finished = ?, isExpired = ?, TimeEnded = (strftime('%s','now')) where rowid = ", isFinished, isExpired, rowid)
+  db.exec(sql"update DepositRequest set Finished = ?, Expired = ?, TimeEnded = (strftime('%s','now')) where rowid = ?", isFinished, isExpired, rowid)
 
 proc endWithdrawal(db : DbConn, rowid : int) = 
   db.exec(sql"update WithdrawalRequest set isComplete = true, TimeEnded = (strftime('%s','now')) where rowid = ?", rowid)
 
 proc validateDepositsBTC*(client : BTCClient, db : DbConn,  a : DepositRequest, change : var float64, total : var float64): Result[DepositOutcome, Exceptions] {.gcsafe.} =
 
-  let currentTime = now().utc
+  let currentTime = now().utc.toTime
 
-  let validLength = initDuration(seconds = a.validLengthSeconds)
-  if currentTime > a.timeStarted+validLength:
+  
+  let validLength = fromUnix(a.timeStarted.toUnix+a.validLengthSeconds)
+  if currentTime > validLength:
     judgeDeposit(db, true, true, a.rowid)
     return ok Expired
 
-  let totalSendSoFar = getRowTyped[(float64,)](db, sql"select sum(AmountReceived) from DepositEvent where DepositRequest = ?", a.rowId).get()[0]
+  let totalSendSoFar = getRowTyped[(float64,)](db, sql"select coalesce(sum(AmountReceived), 0) from DepositEvent where DepositRequest = ?", a.rowId).get()[0]
 
   let addressFound = getreceivedbyaddress(client, a.address)
 
@@ -115,6 +116,8 @@ proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gc
   let rows = fastRowsTyped[DepositRequest](db, sql"""
     select rowid, * from DepositRequest where finished = false and IsActive = true
   """).toSeq().map(x=>x.get())
+
+  echo rows
 
   if rows.len == 0:
     return

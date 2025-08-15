@@ -14,17 +14,17 @@ type
     userName* : string
     password* : string
     saltIv* : string
-    accountCreationTime* : DateTime
+    accountCreationTime* : Time
     IsActive* : bool
   RpcLog* = object
     rowId* : int
     userRowId* : Option[int]
     validLogin* : bool
-    timeRecieved* : DateTime
+    timeRecieved* : Time
     RequestBody* : JsonNode
   UserCryptoChange* = object
     rowId* : int
-    time* : DateTime
+    time* : Time
     userRowId* : int
     cryptoType : string
     crytpoChange : float64
@@ -41,8 +41,8 @@ type
     finished* : bool
     expired* : bool
     isActive* : bool
-    timeStarted* : Datetime
-    timeEnded* : DateTime
+    timeStarted* : Time
+    timeEnded* : Option[Time]
 
   DepositEvent* = object
     rowId* : int
@@ -51,7 +51,7 @@ type
     timeRecieved* : float64
   TransactionData* = object
     rowId* : int
-    time* : DateTime
+    time* : Time
     fee* : float64
     OutputTotal* : float64
     numberOfOutputs* : uint
@@ -60,12 +60,12 @@ type
   WithdrawalRequest* = object
     rowId* : int
     userRowId* : int64
-    timeRecieved* : DateTime 
+    timeRecieved* : Time 
     cryptoType* : CryptoTypes
     cryptoAmount* : float64
     withdrawalStrategy* : WithdrawalStrategy
     withdrawalAddress* : string
-    timeComplete* : Option[DateTime]
+    timeComplete* : Option[Time]
     isComplete* : bool
 
 proc insertWithdrawalRequest*(db : DbConn, userRowId : int, cryptoType : CryptoTypes, strategy : WithdrawalStrategy,  amount : float64, address : string) : int64 =
