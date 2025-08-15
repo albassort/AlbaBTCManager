@@ -1,14 +1,34 @@
 connections:
-  unixSocketPath: ""
+  unixSocketPath : ""
   useUnix: false
   tcpIp: ""
-  tcpPort: 0
+
+  tcpPort: 21853
   tcpPortRandom: false
   useTcp: false
+
   httpIp: ""
-  httpPort: 0
+  httpPort: 21854
   useHttp: false
-  connectionKey: ""
+
+  connectionKey: "vavavava"
+btccore:
+  rpcIp : ""
+  rpcPort: 0
+  rpcUserName : ""
+  rpcPassowrd : ""
+  # Needed to track transactions
+  zmqpubhashblock : ""
+  
+lnd:
+  #can bet set in the API at runtime.
+  macroon: null
+  restPort: 0
+  restIp: "127.0.0.1"
+  # Is read on startup
+  tlsPath : ""
+  # Can be set at runtime
+  walletPassword : ""
 db:
   #defaults to be relative to the executable
   sqliteDbPath : "transactions.db"
@@ -16,15 +36,23 @@ db:
   password: "sort"
   database: ""
 btcConfig:
-  depositTimeOutSeconds: 72000
-  walletName: ""
-  defaultBtcip: "127.0.0.1"
-  defaultBtcport: 18011
-  depositWithdrawalPollSeconds: 1
-  enableInvdividualWithdrawals: true
+  # The time for a given deposit to expire
+  depositTimeOutSeconds : 7200
+  #Wallet password sent at runtime over RCP.
+  walletName : "MyClientWallet"
+
+  #Can be changed at runtime
+  defaultBtcip: ""
+  defaultBtcport: 19773
+
+  #Change to set how often you want to check for deposits and withdrawals
+  depositWithdrawalPollSeconds : 300
+
+  # Allows you to send 'individual' withdrawals which are sent immediately, with higher feels for the user
+  enableInvdividualWithdrawals : true
 debug:
-  debugPath: ""
-  enableDebug: false
+  debugPath: "./debug_output.txt"
+  enableDebug: true
 callbacks:
   discord:
     discordToken: ""
@@ -220,15 +248,4 @@ callbacks:
         newBlockConfirmed: false
         newUTXOUnlocked: false
 
-btcCore:
-  rpcIp: ""
-  rpcPort: 0
-  rpcUserName: ""
-  rpcPassword: ""
-  zmqpubhashblock: ""
-lnd:
-  macroon: ""
-  restPort: 0
-  restIp: ""
-  tlsPath: ""
-  walletPassowrd: ""
+

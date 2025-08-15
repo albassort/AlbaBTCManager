@@ -10,9 +10,10 @@ import strutils
 import std/epoll
 import sugar
 import std/endians
+import middle
 
 type BiChannel = object
-  fromClient* : ptr Channel[JsonNode]
+  fromClient* : ptr Channel[RPCRequest]
   toClient* : ptr Channel[JsonNode]
 
 proc sendTCP*(socket : Socket, message : string) = 
@@ -113,7 +114,7 @@ proc processRequest(request : Request, authKey : string) : Option[JsonNode] =
     
 ##  Takes in a channel for the JSON respones and a channel with the response obj
 ##  Paired with its IID in order to know which response to send to who.
-proc handleHttpRequest(a : (ptr Channel[JsonNode], ptr Channel[(ptr Request, float64)])) =
+proc handleHttpRequest(a : (ptr Channel[JsonNode], ptr Channel[ptr Request])) =
 
   let toClient = a[0]
   let socketChannel = a[1]
@@ -123,7 +124,7 @@ proc handleHttpRequest(a : (ptr Channel[JsonNode], ptr Channel[(ptr Request, flo
     if newSocket.dataAvailable:
       echo "ok we've got one!"
       let socket = newSocket.msg
-      pendingRequest[socket[1]] = socket[0]
+      pendingRequest[cpuTime()] = socket
 
     let request = toClient[].tryRecv()
     if request.dataAvailable:
@@ -137,6 +138,7 @@ proc handleHttpRequest(a : (ptr Channel[JsonNode], ptr Channel[(ptr Request, flo
       freeShared(reqeust)
 
     sleep 500
+
 proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
   let socket = newSocket()
 
@@ -146,9 +148,11 @@ proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
   let channel = a[2]
 
   # Because we don't want to both wait for the reqeusts to have a response, as well as,poll for new requests, we make a thread for that. Where, our reqeust sit and wait for respoonses
-  var t : Thread[(ptr Channel[JsonNode], ptr Channel[(ptr Request, float64)])]
-  let newChannel = createShared(CHannel[(ptr Request, float64)], sizeof(Channel[(ptr Request, float64)]))
-  createThread(t,handleHttpRequest, (channel.toClient, newChannel))
+  var t : Thread[(ptr Channel[JsonNode], ptr Channel[ptr Request])]
+  let newChannel = createShared(Channel[ptr Request], sizeof(Channel[ptr Request]))
+
+  createThread(t, handleHttpRequest, (channel.toClient, newChannel))
+
   newChannel[].open()
 
   socket.setSockOpt(OptReusePort, true)
@@ -163,16 +167,16 @@ proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
     if node.isNone:
       continue
     let json = node.get()
-    let iid = cpuTime() 
+    let funct = json["func"].getStr()
+    let toSend = requestTemplate(funct, "http", json)
 
-    json["iid"] = newJFloat iid
-    json["from"] = newJString "http"
-    channel.fromClient[].send(json)
+    channel.fromClient[].send(toSend)
 
     let toChannel = createShared(Request, sizeof(Request))
     echo "ok you've been sent out!"
+
     toChannel[] = request
-    newChannel[].send((toChannel, iid))
+    newChannel[].send(toChannel)
 
 proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
   #inspired by TCB hehe
@@ -231,13 +235,12 @@ proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
         try:
           # the iid -- internal id --- is needed to figure out which channel to send the response to
           var json = parseJson newMessage
-          let replyId = cpuTime()
-          json["iid"] = newJFloat replyId 
-          json["from"] = newJString "tcp"
+          let funct = json["func"].getStr()
+          let toSend = requestTemplate(funct, "http", json)
 
-          targetChannel.fromClient[].send(json)
+          targetChannel.fromClient[].send(toSend)
 
-          pendingReplies[replyId] = sfd
+          pendingReplies[toSend.iid] = sfd
         except:
           continue
 
@@ -297,7 +300,7 @@ proc tcpServer(a : (Port, string, ptr Channel[ptr Socket], bool, string)) =
 
 
 proc httpTest() = 
-  let fromClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
+  let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
   let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
   fromClient[].open()
   toClient[].open()
@@ -310,17 +313,16 @@ proc httpTest() =
     let data = biChannel.fromClient[].tryRecv
     if data.dataAvailable:
       echo "ok got a request from a client sending my response!"
-      let json = data.msg
-      echo json 
+      let request = data.msg
       let response = newJObject()
-      response["iid"] = json["iid"]
+      response["iid"] = newJFloat request.iid
       response["big step"] = newJBool true
       biChannel.toClient[].send(response)
     sleep 500
   
 proc tcpTest() = 
   let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
-  let fromClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
+  let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
   let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
 
   socketChannel[].open()
@@ -348,7 +350,7 @@ proc tcpTest() =
   testSocket.sendTCP($testObj)
   sleep 100
   let obj = fromClient[].tryRecv.msg
-  toClient[].send(obj)
+  toClient[].send(newJObject())
   echo testSocket.recvTCP()
 
 tcpTest()

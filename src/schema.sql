@@ -24,7 +24,7 @@ CREATE TABLE UserCryptoChange (
 CREATE TABLE DepositRequest (
     ReceivingAddress varchar(256) not null,
     CoinType Varchar(12) not null,
-    ValidLenghtSeconds Integer default 7200,
+    ValidLengthSeconds Integer default 7200,
 
     PayToUser Integer references Users (RowId),
 

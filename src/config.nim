@@ -1,29 +1,55 @@
 import yaml, streams
 type 
-  DepositBool* = object 
-    noChange* : bool
-    fundingIncreased* : bool
-    expired* : bool
-    fullyFunded* : bool
-  ExceptionsBools* = object
-    errorUpdatingRow* : bool
-    notEnoughFunds* : bool
-    failedToSubmitRawTx* : bool
-    failedToCreateTx* : bool
-    multipleCoinsInWithdrawal* : bool
-    incorrectCoinInWithdrawal* : bool
-  DepositLocations* = object 
-    noChange* : string
-    fundingIncreased* : string
-    expired* : string
-    fullyFunded* : string
-  ExceptionsLocations* = object
-    errorUpdatingRow* : string
-    notEnoughFunds* : string
-    failedToSubmitRawTx* : string
-    failedToCreateTx* : string
-    multipleCoinsInWithdrawal* : string
-    incorrectCoinInWithdrawal* : string
+  DepositCallbacks*[T] = object 
+    noChange* : T
+    fundingIncreased* : T
+    expired* : T
+    fullyFunded* : T
+  ExceptionsCallbacks*[T] = object
+    errorUpdatingRow* : T
+    notEnoughFunds* : T
+    failedToSubmitRawTx* : T
+    failedToCreateTx* : T
+    multipleCoinsInWithdrawal* : T
+    incorrectCoinInWithdrawal* : T
+  ChannelsCallbacks*[T] = object
+    channelCreated : T
+    invoicedPaid : T
+    channelOpenTxConfirm : T
+    channelClosed : T
+    channelCloseTxConfirm : T
+  WithdrawalsCallbacks*[T] = object
+    withdrawalCreated : T
+    groupWithdrawalFulfilled : T
+    singleWithdrawalCreated : T
+    withdrawalTxConfirmed : T
+  XMRCallbacks*[T] = object
+    newBlockConfirmed : T
+    newUTXOUnlocked : T
+  BTCCallbacks*[T] = object
+    newBlockConfirmed : T
+  BTCCoreConfig* = object
+    rpcIp* : string
+    rpcPort* : int
+    rpcUserName* : string
+    rpcPassword* : string
+    zmqpubhashblock* : string
+  LND* = object
+    macroon : string
+    restPort : int
+    restIp : string
+    tlsPath : string
+    walletPassowrd : string
+
+  Callbacks*[T] = object
+    deposits* : DepositCallbacks[T]
+    exceptions* : ExceptionsCallbacks[T]
+    channels : ChannelsCallbacks[T]
+    withdrawals : WithdrawalsCallbacks[T] 
+    btc : BTCCallbacks[T]
+    xmr : XMRCallbacks[T]
+
+
   Connections* = object
     unixSocketPath* : string
     useUnix* : bool
@@ -55,13 +81,15 @@ type
     discordPort* : int
     defaultChannel* : string
     useDefaultChannel* : bool
-    callbacks*: CallBackLocations
+    callbacks*: Callbacks[string]
   SMTP* = object
     username* : string
     password* : string
     port* : int
     address* : string
-    callbacks*: CallBackLocations
+
+    callbacks*: Callbacks[string]
+
     defaultMail* : string
     useDefaultMail* : bool
     useTLS* : bool
@@ -70,28 +98,18 @@ type
     ip* : string 
     port* : string
     broadcastOverRecievingTcp* : bool
-    callbacks*: CallBackBools
+    callbacks*: Callbacks[bool]
   UnixSocket* = object
     location* : string
-    callbacks*: CallBackBools
+    callbacks*: Callbacks[bool]
   HTTP* = object
     endpoint* : string
     auth* : string
-    callbacks*: CallBackBools
+    callbacks*: Callbacks[bool]
   NamedPipe* = object
     path* : string
-    callbacks*: CallBackBools
-  CallBackBools* = object
-    deposits* : DepositBool
-    exceptions* : ExceptionsBools
-  CallBackLocations* = object
-    deposits* : DepositLocations
-    exceptions* : ExceptionsLocations
-  LND* = object
-    macaroon : Option[string]
-    restPort : int
-    restIp : string
-  CallBacks* = object
+    callbacks*: Callbacks[bool]
+  CallBacksGroupings* = object
     discord* : Discord
     smtp* : SMTP
     tcp* : TCP
@@ -103,11 +121,13 @@ type
     db* : DbConfig
     btcConfig* : BTCConfig
     debug* : Debug
-    callbacks* : CallBacks
-  hasCallbacksBools* = concept x 
-    x.callbacks is CallBackBools
-  hasCallbacksLocations* = concept x 
-    x.callbacks is CallBackLocations
+    callbacks* : CallBacksGroupings
+    btcCore* : BTCCoreConfig
+    lnd* : LND
+  hasCallbacksBools*[T] = concept x 
+    x.callbacks is Callbacks[bool]
+  hasCallbacksLocations*[T] = concept x 
+    x.callbacks is Callbacks[string]
 
 
 proc evaluateConfig*() : Config =
@@ -121,4 +141,11 @@ proc evaluateConfig*() : Config =
   doAssert((config.db.username != "SET ME!" and config.db.password != "SERIOUSLY"), "Please set DB protection!")
 
   return config
+  
+when isMainModule:
+  let config = new Config
+  var s = newFileStream("configref.yaml", fmWrite)
+  Dumper().dump(config, s)
+  s.close()
+  echo "written"
 

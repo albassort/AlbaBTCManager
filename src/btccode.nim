@@ -84,4 +84,5 @@ proc doStuff(url : string, postBody = "", doPost = false) =
   if ret == E_OK:
     echo(webData[])
 
-doStuff("https://localhost:8080/v1/invoices/subscribe")
+when isMainModule:
+  doStuff("https://localhost:8080/v1/invoices/subscribe")

@@ -13,10 +13,9 @@ import times
 import ./btccode
 import groupBy
 
-
 type
   CryptoClients* = object
-    btcClient : Option[BTCClient]
+    btcClient* : Option[BTCClient]
   DepositOutcome* = enum
     NoChange = "noChange", FundingIncreased = "fundingIncreased", Expired = "expired", FullyFunded = "fullyFunded"
   Exceptions*  = enum
@@ -112,7 +111,7 @@ proc handleWidhtrawals*(clients : CryptoClients, coinType: CryptoTypes, db : DbC
       #
 proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gcsafe.} =
   let rows = fastRowsTyped[DepositRequest](db, sql"""
-    select * from DepositRequest where finished = false and IsActive = true
+    select rowid, * from DepositRequest where finished = false and IsActive = true
   """).toSeq().map(x=>x.get())
 
   if rows.len == 0:

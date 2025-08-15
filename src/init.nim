@@ -15,20 +15,16 @@ import net
 import nativesockets
 import os
 import json
+import NimBTC
 
+echo "starting init"
 static:
   # Makes sure that the paths line up from the config to the internal enums
-  let one = new ExceptionsBools
-  let two = new ExceptionsLocations
-  let three = new DepositLocations
-  let four = new DepositBool
+  let one = new ExceptionsCallbacks[string]
+  let two = new DepositCallbacks[string]
   for key,val in fieldPairs(one[]):
     discard parseEnum[Exceptions](key)
   for key,val in fieldPairs(two[]):
-    discard parseEnum[Exceptions](key)
-  for key,val in fieldPairs(three[]):
-    discard parseEnum[DepositOutcome](key)
-  for key,val in fieldPairs(four[]):
     discard parseEnum[DepositOutcome](key)
 
 proc assignCallBacks(a : hasCallbacksLocations, default = "") : Table[string, string] =
@@ -59,6 +55,7 @@ type
   State* = object
     lndMacroon : string
 
+echo "starting clients"
 var discordThread : Thread[(string, cint)]
 let smtpConn = newSmtp(debug=true)
 var namedPipe : FIleSTream
@@ -166,44 +163,58 @@ proc initMessageManager(config : Config) : MessageHandler =
     result.callbacksEnabled.incl(SendHTTP)
     result.locationRoutes[SendHTTP] = httpCallbacks
 
-const schema = staticRead("./schema.sql")
 let globalConfig* = createShared(Config, sizeof(Config))
 globalConfig[] = evaluateConfig()
-echo initMessageManager(globalConfig[])
 
-var db : DbConn
-if not fileExists(globalConfig[].db.sqliteDbPath):
+proc initCryptoClients*() : CryptoClients =
+  #TODO:  REFINE
 
-  db = open(globalConfig[].db.sqliteDbPath, globalConfig[].db.username, globalConfig[].db.password, globalConfig[].db.database)
-  echo "It seems that your database does not exist yet. We will create it now."
+  let port = globalConfig[].btcCore.rpcPort
+  let url = globalConfig[].btcCore.rpcIp & &":{port}"
+  let userName = globalConfig[].btcCore.rpcUserName
+  let password = globalConfig[].btcCore.rpcPassword
 
-  for table in schema.split(";"):
-    if table[0] == '-': continue
-    echo table
-    try:
-      db.exec(sql table)
-    except:
-      continue
+  var btc = initBTCClient(url, userName, password)
+  result.btcClient = some(btc)
 
-  echo "please enter the new password and salt of your ADMIN user."
-else:
-  try:
+const schema = staticRead("./schema.sql")
+#TODO: make htis not break
+when isMainModule:
+  echo initMessageManager(globalConfig[])
+  var db : DbConn
+
+  if not fileExists(globalConfig[].db.sqliteDbPath):
+
     db = open(globalConfig[].db.sqliteDbPath, globalConfig[].db.username, globalConfig[].db.password, globalConfig[].db.database)
-  except:
-    echo "Failed to log into database, this is likely an issue with your authenticaiton."
-    quit()
+    echo "It seems that your database does not exist yet. We will create it now."
 
-  try:
-    let row = db.getRow(sql"select Username, Password, SaltIv from Users where rowid = 1 ")
-    if row[0] == "":
-      echo "Do stuff to ask if they want to create a database"
-      quit(1)
-    echo row
-    if row[1] == "CHANGE" or row[2] == "ME!":
-      echo "Please change the username and password of your admin user (user rowid=1)"
-      quit(1)
+    for table in schema.split(";"):
+      if table[0] == '-': continue
+      echo table
+      try:
+        db.exec(sql table)
+      except:
+        continue
 
-  except Exception as e:
-    echo "It seems that you haven't initiated the database, or there is some issue with it."
-    echo e[]
+    echo "please enter the new password and salt of your ADMIN user."
+  else:
+    try:
+      db = open(globalConfig[].db.sqliteDbPath, globalConfig[].db.username, globalConfig[].db.password, globalConfig[].db.database)
+    except:
+      echo "Failed to log into database, this is likely an issue with your authenticaiton."
+      quit()
+
+    try:
+      let row = db.getRow(sql"select Username, Password, SaltIv from Users where rowid = 1 ")
+      if row[0] == "":
+        echo "Do stuff to ask if they want to create a database"
+        quit(1)
+      echo row
+      if row[1] == "CHANGE" or row[2] == "ME!":
+        echo "Please change the username and password of your admin user (user rowid=1)"
+        quit(1)
+
+    except Exception as e:
+      echo "It seems that you haven't initiated the database, or there is some issue with it."
+      echo e[]
 

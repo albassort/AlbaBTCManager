@@ -2,6 +2,7 @@ import times
 import db_connector/db_sqlite
 import std/options
 import Json
+import NimBTC
 type 
 
   WithdrawalStrategy* = enum
@@ -78,5 +79,12 @@ proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CryptoTyp
   db.exec(sql"insert into UserCryptoChange(UserRowId, CryptoType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1)",
     userRowId, $cryptoType, amount, depositRequestRowId, withdarawalRequestRowId)
   
-# proc insertNewDepositRequest*(db : DbConn, cryptoAmount : float64, cryptoType : CryptoTypes, userRowId = 1) =
+proc createNewDepositRequest(db : DbConn, address : string, cryptoType : CryptoTypes, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
+
+  let insert = sql"""insert into UserCryptoChange(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount) values (?, ?, ?, ?, ?)"""
+  return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, depositAmount)
+  discard ""
+  #discard getNewAddress
+  #
+ 
 #   db.exec(sql"insert into WithdrawalRequest(CoinType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress, PayToUser) VALUES (?,?,?,?,?)", userRowId, $cryptoType, cryptoAmount, $strategy, address)
