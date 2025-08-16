@@ -90,7 +90,6 @@ proc initMessageManager(config : Config) : MessageHandler =
   if smtpConfig.address != "":
     block SMTPInit:
       try:
-        echo (smtpConfig.address, Port smtpConfig.port)
         smtpConn.connect(smtpConfig.address, Port smtpConfig.port)
       except CatchableError as e:
         echo "failed to connect to SMTP SERVER"
@@ -184,8 +183,7 @@ proc initCryptoClients*() : CryptoClients =
 
   proc testPassword() : bool =
     let unlockAttempt = btc.walletPassphrase(walletPassword.get(), 300)
-    echo (unlockAttempt, unlockAttempt.hasResult)
-    return unlockAttempt.isErr
+    return unlockAttempt.isOk
 
 
   var needsPassword = false
@@ -220,8 +218,7 @@ proc initCryptoClients*() : CryptoClients =
     if not createAttempt.hasResult:
       failedToCreate = true
 
-
-  echo (needsPassword, failedToLoad, wrongPassword, failedToCreate)
+  echo (failedToCreate, wrongPassword, needsPassword)
   doAssert not failedToCreate and not wrongPassword and not needsPassword
 
 

@@ -22,7 +22,7 @@ type
     NoChange = "noChange", FundingIncreased = "fundingIncreased", Expired = "expired", FullyFunded = "fullyFunded"
   Exceptions*  = enum
     ErrorChangingRow = "errorUpdatingRow", NotEnoughFunds = "notEnoughFunds", FailedToCreateTx = "failedToCreateTx",
-    FailedToSubmitRawTx = "failedToSubmitRawTx", MultipleCoinsInWithdrawal = "multipleCoinsInWithdrawal", IncorrectCoinInWithdrawal = "incorrectCoinInWithdrawal"
+    FailedToSubmitRawTx = "failedToSubmitRawTx", MultipleCoinsInWithdrawal = "multipleCoinsInWithdrawal", IncorrectCoinInWithdrawal = "incorrectCoinInWithdrawal", addresNotFound = "addresNotFound"
 
 proc judgeDeposit(db : DbCOnn, isFinished, isExpired : bool, rowid : int) =  
   db.exec(sql"update DepositRequest set Finished = ?, Expired = ?, TimeEnded = (strftime('%s','now')) where rowid = ?", isFinished, isExpired, rowid)
@@ -44,7 +44,11 @@ proc validateDepositsBTC*(client : BTCClient, db : DbConn,  a : DepositRequest, 
 
   let addressFound = getreceivedbyaddress(client, a.address)
 
+  if addressFound.isErr:
+    return err addresNotFound
+
   let amountDeposited = addressFound.resultObject.getFloat()
+  echo addressFound
 
   if amountDeposited > totalSendSoFar:
     let change = amountDeposited-totalSendSoFar
@@ -161,17 +165,18 @@ proc monitorTxId*(clients : CryptoClients, db : DbConn, txid : string, confTarge
   echo callback
 
 
-proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CryptoTypes, depositAmount : float, userRowId : int = 1) : Option[int] {.gcsafe.} =
+proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CryptoTypes, depositAmount : float, userRowId : int = 1) : Option[string] {.gcsafe.} =
   case cryptoType:
     of BTC:
       #TODO: check if some; send out notif if not and enabled
       let client = clients.btcClient.get()
-      let newAddress = getNewAddress(client, "")
+      let newAddress = getNewAddress(client, "", BECH32)
       if not newAddress.hasResult:
         echo newAddress 
         return 
       let address = newAddress.resultObject.getStr()
 
-      return some createNewDepositRequest(db, address, BTC, 7200, depositAmount, userRowId)
+      discard createNewDepositRequest(db, address, BTC, 7200, depositAmount, userRowId)
+      return some address
 
 
