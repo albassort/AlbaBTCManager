@@ -3,10 +3,16 @@ import db_connector/db_sqlite
 import std/options
 import Json
 import NimBTC
+import tables
+import ./cheapORMSqlite
+import sequtils
+import sugar
+import groupBy
+import strutils
 type 
 
   WithdrawalStrategy* = enum
-    Group, Single
+    Group = "group", Single = "single"
   CryptoTypes* = enum
     BTC = "BTC"
   User* = object
@@ -76,7 +82,7 @@ proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CryptoTyp
 
   doAssert depositRequestRowId == -1 xor withdarawalRequestRowId == -1
 
-  db.exec(sql"insert into UserCryptoChange(UserRowId, CryptoType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1)",
+  db.exec(sql"insert into UserCryptoChange(UserRowId, CryptoType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1))",
     userRowId, $cryptoType, amount, depositRequestRowId, withdarawalRequestRowId)
   
 proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CryptoTypes, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
@@ -85,6 +91,22 @@ proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : Crypto
   return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, depositAmount)
   discard ""
   #discard getNewAddress
-  #
  
+proc getAmountForUserByCrypto(db : DbConn, userRowId : int) : Table[CryptoTypes, float64] =  
+
+  const totalCryptoForType = sql"select sum(CryptoChange), CryptoType from UserCryptoChange where UserRowId = ? group by CryptoType"
+
+  result = fastRowsTyped[(float64, string)](db, totalCryptoForType, userRowId).toSeq().map(x=>x.get()).keyVal(x=> parseEnum[CryptoTypes](x[1]), x=> x[0])
+  for kind in CryptoTypes:
+    if kind notin result:
+      result[kind] = 0
+
+proc createWithdrawalRequest*(db : DbConn, address : string, amount : float64, cryptoType : CryptoTypes, userRowId : int, withdrawalStrategy: WithdrawalStrategy) : int = 
+
+  let insert = sql"""insert into WithdrawalRequest(userRowId, cryptoType, cryptoAmount, withdrawalStrategy, withdrawalAddress
+  ) values (?, ?, ?, ?, ?)"""
+  return db.insertId(insert, cryptoType, amount, $cryptoType, address)
+
+
+
 #   db.exec(sql"insert into WithdrawalRequest(CoinType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress, PayToUser) VALUES (?,?,?,?,?)", userRowId, $cryptoType, cryptoAmount, $strategy, address)

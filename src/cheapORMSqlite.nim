@@ -6,11 +6,11 @@ import times
 import std/options
 import std/uri
 import tables
+import Json
 
-#type  canSerialize* = concept x
-#    isSome x
-#    isNone x
-proc assignFromString[T](a : string, b : var T) =
+proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
+  let boolConverstionTable = {"f" : false, "t" : true}.toTable()
+
   when b is string:
     if a.len != 0:
       b = a
@@ -19,59 +19,69 @@ proc assignFromString[T](a : string, b : var T) =
       b = parseInt(a)
     else:
       b = 0
-  when b is uint8 or b is uint16 or b is uint32 or b is uint64:
+  when b is uint or b is uint8 or b is uint16 or b is uint32 or b is uint64:
     if a != "":
       b = parseUInt(a)
     else:
       b = 0
   when b is Time:
+    #TODO: enforce UTC time.
     b = fromUnix(parseInt(a))
   when b is bool:
-    b = parseBool(a)
+    if a in boolConverstionTable:
+      b = boolConverstionTable[a]
+    else:
+      b = parseBool(a)
   when b is float:
     b = parseFloat(a)
-  #echo ("after->", row[i], x, y)
+  when b is Option:
+    if a.high == -1:
+      b = none[b.T]()
+    else:
+      let newVariable = new b.T
+      var dereference = newVariable[]
+      assignFromString(a, dereference)
+      b = some(dereference)
+  when b is JsonNode:
+    b = parseJson(a)
 
-proc convertRow*[T](row: Row) : Option[T] =
+proc convertRow[T](row: Row) : Option[T] {.gcsafe.}  =
+  # Internal, attempts to convert a row to the given type
   try:
     var generic = new result.T
     var i = 0
     for x,y in fieldPairs(generic[]):
-      echo ("before->", row[i], x, y)
       assignFromString(row[i], y)
       i+=1
     doAssert(i == row.len)
     return some(generic[])
-  except Exception as e:
-    echo e[] 
+  except:
+    echo row
+  
+    echo getCurrentException()[]
     return none(T)
 
 iterator fastRowsTyped*[T](db: DbConn,
                         query: SqlQuery,
                         args: varargs[string, `$`]) : Option[T] =
 
+  ## Iterates over the given query, returning all rows converted to the output type
+
   for row in db.fastRows(query, args):
     yield convertRow[T](row)
 
 iterator fastRowsTyped*[T](db: DbConn,
-                        query: SqlPrepared) : Option[T] =
+                        query: SqlPrepared) : Option[T]  {.gcsafe.} =
+  ## Iterates over the given query, returning all rows converted to the output type
 
   for row in db.fastRows(query):
     yield convertRow[T](row)
 
 proc getRowTyped*[T](db: DbConn,
                         query: SqlQuery,
-                        args: varargs[string, `$`]) : Option[T] =
+                        args: varargs[string, `$`]) : Option[T] {.gcsafe.}  =
 
+  ## converts a single row from the query.
   return convertRow[T] db.getRow(query, args)
 
-proc convertUriQueryToTable*(a : Uri) : Table[string, string] =
-  let decode = decodeQuery(a.query).toSeq()
-  for keyval in decode:
-    let key = keyval[0]
-    let val = keyval[1]
-    if not key.isEmptyOrWhitespace():
-      echo (key,val)
-      result[key.toUpper()] = val
-  echo result
 

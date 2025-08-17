@@ -59,6 +59,11 @@ proc validateDepositsBTC*(client : BTCClient, db : DbConn,  a : DepositRequest, 
 
   judgeDeposit(db, true, false, a.rowid)
 
+  echo a
+  if a.payToUser.isSome():
+    dbCommitBalanceChange(db, a.payToUser.get(), BTC, a.depositAmount, a.rowid)
+
+  quit 1 
   return ok FullyFunded
 
 const totalCryptoForType = sql"select coalesce(sum(CryptoChange), 0) from UserCryptoChange where CryptoType = ? and userRowId = ?"
@@ -102,20 +107,7 @@ proc handleWidhtrawals*(clients : CryptoClients, coinType: CryptoTypes, db : DbC
       let rawtxunsignedHex = rawtxunsigned.get().resultObject["hex"].getStr
 
       var signedObject = newJOBject()
-      #TODO: wallet password conf system
-      # TODO FIX
-      # let rawTx = submitRawTransaction(clients.btcClient.get(), rawtxunsignedHex, signedObject)
-      #
-      # if rawTx.isErr:
-      #   return err FailedToSubmitRawTx
-      #
-      # let hex = rawTx.get().resultObject["hex"].getStr
-      #
-      # discard db.insertId(sql"insert into TransactionData(FeeEstimate, OutputTotal, NumberOfOputs, TransactionRawHex, TransactionSignedData, TxId)", feeEstimate, totalCrypto, outputs.keys.toSeq().len, hex, $signedObject, signedObject["txid"].getStr)
-      #
-      # for row in a:
-      #   endWithdrawal(db, row.rowId)
-      #
+
 proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gcsafe.} =
   let rows = fastRowsTyped[DepositRequest](db, sql"""
     select rowid, * from DepositRequest where finished = false and IsActive = true
@@ -144,7 +136,7 @@ proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gc
 
 proc judgeAllWithdrawals*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gcsafe.} =
   let rows = fastRowsTyped[WithdrawalRequest](db, sql"""
-    select * from WithdrawalRequest where finished = false and IsActive = true
+    select rowid, * from WithdrawalRequest where finished = false and IsActive = true
   """).toSeq().map(x=>x.get())
 
   let byCrypto = rows.groupBy(x=> x.cryptoType, x=> x)
