@@ -9,8 +9,15 @@ import sequtils
 import sugar
 import groupBy
 import strutils
-type 
+import shared
 
+proc `$`(a : float64 | float | float32) : string =
+  formatBiggestFloat(a, ffDecimal)
+
+converter toString(a : float64 | float | float32) : string =
+  formatBiggestFloat(a, ffDecimal)
+
+type 
   WithdrawalStrategy* = enum
     Group = "group", Single = "single"
   CryptoTypes* = enum
@@ -73,6 +80,7 @@ type
     withdrawalAddress* : string
     timeComplete* : Option[Time]
     isComplete* : bool
+    isActive* : bool
 
 proc insertWithdrawalRequest*(db : DbConn, userRowId : int, cryptoType : CryptoTypes, strategy : WithdrawalStrategy,  amount : float64, address : string) : int64 =
   return db.insertId(sql"insert into WithdrawalRequest(UserRowId, CryptoType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress) VALUES (?,?,?,?,?)", userRowId, $cryptoType, amount, $strategy, address)
@@ -88,18 +96,18 @@ proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CryptoTyp
 proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CryptoTypes, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
 
   let insert = sql"""insert into DepositRequest(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount) values (?, ?, ?, ?, ?)"""
-  return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, depositAmount)
+  return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, $depositAmount)
   discard ""
   #discard getNewAddress
  
-proc getAmountForUserByCrypto(db : DbConn, userRowId : int) : Table[CryptoTypes, float64] =  
+proc getAmountForUserByCrypto*(db : DbConn, userRowId : int) : Table[CryptoTypes, float64] =  
 
   const totalCryptoForType = sql"select sum(CryptoChange), CryptoType from UserCryptoChange where UserRowId = ? group by CryptoType"
 
   result = fastRowsTyped[(float64, string)](db, totalCryptoForType, userRowId).toSeq().map(x=>x.get()).keyVal(x=> parseEnum[CryptoTypes](x[1]), x=> x[0])
   for kind in CryptoTypes:
     if kind notin result:
-      result[kind] = 0
+      result[kind] = 0.0
 
 proc createWithdrawalRequest*(db : DbConn, address : string, amount : float64, cryptoType : CryptoTypes, userRowId : int, withdrawalStrategy: WithdrawalStrategy) : int = 
 
@@ -107,6 +115,8 @@ proc createWithdrawalRequest*(db : DbConn, address : string, amount : float64, c
   ) values (?, ?, ?, ?, ?)"""
   return db.insertId(insert, cryptoType, amount, $cryptoType, address)
 
+proc getUserByRowid*(db : DbConn, userRowId : int) : Option[User] = 
+  getRowTyped[User](db, sql"select rowid, * from Users where RowId = ?", userRowId)
 
 
 #   db.exec(sql"insert into WithdrawalRequest(CoinType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress, PayToUser) VALUES (?,?,?,?,?)", userRowId, $cryptoType, cryptoAmount, $strategy, address)

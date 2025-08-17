@@ -14,21 +14,29 @@ import ./btccode
 import groupBy
 import ./dbcode
 export dbcode
-
+import init
+import shared
+import config
+import strutils
+ 
 type
-  CryptoClients* = object
-    btcClient* : Option[BTCClient]
   DepositOutcome* = enum
     NoChange = "noChange", FundingIncreased = "fundingIncreased", Expired = "expired", FullyFunded = "fullyFunded"
-  Exceptions*  = enum
-    ErrorChangingRow = "errorUpdatingRow", NotEnoughFunds = "notEnoughFunds", FailedToCreateTx = "failedToCreateTx",
-    FailedToSubmitRawTx = "failedToSubmitRawTx", MultipleCoinsInWithdrawal = "multipleCoinsInWithdrawal", IncorrectCoinInWithdrawal = "incorrectCoinInWithdrawal", addresNotFound = "addresNotFound"
+
+static:
+  # Makes sure that the paths line up from the config to the internal enums
+  let one = new ExceptionsCallbacks[string]
+  let two = new DepositCallbacks[string]
+  for key,val in fieldPairs(one[]):
+    discard parseEnum[Exceptions](key)
+  for key,val in fieldPairs(two[]):
+    discard parseEnum[DepositOutcome](key)
 
 proc judgeDeposit(db : DbCOnn, isFinished, isExpired : bool, rowid : int) =  
   db.exec(sql"update DepositRequest set Finished = ?, Expired = ?, TimeEnded = (strftime('%s','now')) where rowid = ?", isFinished, isExpired, rowid)
 
-proc endWithdrawal(db : DbConn, rowid : int) = 
-  db.exec(sql"update WithdrawalRequest set isComplete = true, TimeEnded = (strftime('%s','now')) where rowid = ?", rowid)
+proc endWithdrawal*(db : DbConn, rowid : int) = 
+  db.exec(sql"update WithdrawalRequest set isComplete = true, timeComplete = (strftime('%s','now')) where rowid = ?", rowid)
 
 proc validateDepositsBTC*(client : BTCClient, db : DbConn,  a : DepositRequest, change : var float64, total : var float64): Result[DepositOutcome, Exceptions] {.gcsafe.} =
 
@@ -70,21 +78,29 @@ const totalCryptoForType = sql"select coalesce(sum(CryptoChange), 0) from UserCr
 
 #PRAGMA busy_timeout = 5000;
 #
-proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinType : CryptoTypes, withdrawalType: WithdrawalStrategy, coinAmount : float64) : Result[void, Exceptions] =
-  let totalCurrency = getRowTyped[(float64,)](db, totalCryptoForType, $coinType, user.rowId).get()[0]
-  if totalCurrency > coinAmount:
+proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinType : CryptoTypes, withdrawalType: WithdrawalStrategy, coinAmount : float64) : Result[int, Exceptions] =
+
+  let userAmount = getAmountForUserByCrypto(db, user.rowId)
+
+  if coinAmount > userAmount[coinType]:
     return err NotEnoughFunds
+
+
   let id = insertWithdrawalRequest(db, user.rowId, coinType, withdrawalType, coinAmount, address)
-  dbCommitBalanceChange(db, user.rowid, coinType, coinAmount, id)
+  dbCommitBalanceChange(db, user.rowid, coinType, coinAmount * -1, depositRequestRowId = id)
+  return ok id
 
 
 proc handleWidhtrawals*(clients : CryptoClients, coinType: CryptoTypes, db : DbConn, a : seq[WithdrawalRequest]) : Result[string, Exceptions] =
 
-  if a.map(x=> x.cryptoType).deduplicate().len == 1:
+  echo "here"
+  #TODO: callback with the total BTC sent: oh and the users oh and everything. Alright we need to collect all the data from this haha
+  
+  if a.map(x=> x.cryptoType).deduplicate().len != 1:
     return err MultipleCoinsInWithdrawal
 
-  if a[0].cryptoType == coinType:
-    return err IncorrectCoinInWithdrawal
+  # if a[0].cryptoType == coinType:
+  #   return err IncorrectCoinInWithdrawal
 
   let targets = a.groupBy(x => x.withdrawalAddress, x => x.cryptoAmount)
   var outputs = initTable[string, float64]()
@@ -92,23 +108,20 @@ proc handleWidhtrawals*(clients : CryptoClients, coinType: CryptoTypes, db : DbC
   for x,y in targets.pairs:
     outputs[x] = y.foldl(a+b)
     totalCrypto += outputs[x]
+#
 #  let totalCurrency = getRowTyped[(float64,)](db, totalCryptoForType, a.cryptoType, user.rowId).get()[0]
 #  if totalCurrency > a.cryptoAmount:
 #    return err NotEnoughFunds
 
   case coinType:
     of BTC:
-      var feeResult = 0.0
-      let rawtxunsigned = createTransaction(clients.btcClient.get(), outputs, 6)
-      if rawtxunsigned.isErr:
-        return err FailedToCreateTx
+      echo sendBTC(clients.btcClient.get(), outputs, 6, globalConfig[].btcConfig.walletPassword)
+      for x in a:
+        echo x
+        endWithdrawal(db, x.rowId)
+      
 
-      let feeEstimate = rawtxunsigned.get().resultObject["fee"].getFloat
-      let rawtxunsignedHex = rawtxunsigned.get().resultObject["hex"].getStr
-
-      var signedObject = newJOBject()
-
-proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gcsafe.} =
+proc judgeAllDeposits*(db : DbConn,clients : CryptoClients) : HashSet[int] {.gcsafe.} =
   let rows = fastRowsTyped[DepositRequest](db, sql"""
     select rowid, * from DepositRequest where finished = false and IsActive = true
   """).toSeq().map(x=>x.get())
@@ -134,10 +147,13 @@ proc judgeAllDeposits*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gc
       var totalDeposited : float64
       let judge = validateDepositsBTC(client, db, row, btcChange, totalDeposited)
 
-proc judgeAllWithdrawals*(clients : CryptoClients, db : DbConn) : HashSet[int] {.gcsafe.} =
+  quit 1
+proc judgeAllWithdrawals*(db : DbConn, clients : CryptoClients) : HashSet[int] {.gcsafe.} =
   let rows = fastRowsTyped[WithdrawalRequest](db, sql"""
-    select rowid, * from WithdrawalRequest where finished = false and IsActive = true
+    select rowid, * from WithdrawalRequest where isComplete = false and isActive = true
   """).toSeq().map(x=>x.get())
+
+  echo rows
 
   let byCrypto = rows.groupBy(x=> x.cryptoType, x=> x)
   var usersSkip : HashSet[int]
@@ -150,7 +166,8 @@ proc judgeAllWithdrawals*(clients : CryptoClients, db : DbConn) : HashSet[int] {
         usersSkip.incl(user)
 
     let validWithdarawals = rows.groupBy(x=> x.userRowId notin usersSkip, x=> x)
-    discard handleWidhtrawals(clients, cryptoType, db, rows)
+    echo handleWidhtrawals(clients, cryptoType, db, rows)
+  quit 1
 
 
 proc monitorTxId*(clients : CryptoClients, db : DbConn, txid : string, confTarget : int, callback: JsonNode)  {.gcsafe.} =
@@ -169,6 +186,7 @@ proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: Crypto
       let address = newAddress.resultObject.getStr()
 
       discard createNewDepositRequest(db, address, BTC, 7200, depositAmount, userRowId)
+
       return some address
 
 

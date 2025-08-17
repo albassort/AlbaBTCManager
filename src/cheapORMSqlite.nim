@@ -24,8 +24,8 @@ proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
       b = parseUInt(a)
     else:
       b = 0
+    b = parsePostgresTime(a)
   when b is Time:
-    #TODO: enforce UTC time.
     b = fromUnix(parseInt(a))
   when b is bool:
     if a in boolConverstionTable:

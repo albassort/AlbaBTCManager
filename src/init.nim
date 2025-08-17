@@ -5,7 +5,6 @@ import ./config
 import db_connector/db_sqlite
 import strutils
 import sets
-import middle
 import albaDiscord
 import smtp
 import posix
@@ -16,16 +15,10 @@ import nativesockets
 import os
 import json
 import NimBTC
+import shared
+import strutils
 
 echo "starting init"
-static:
-  # Makes sure that the paths line up from the config to the internal enums
-  let one = new ExceptionsCallbacks[string]
-  let two = new DepositCallbacks[string]
-  for key,val in fieldPairs(one[]):
-    discard parseEnum[Exceptions](key)
-  for key,val in fieldPairs(two[]):
-    discard parseEnum[DepositOutcome](key)
 
 proc assignCallBacks(a : hasCallbacksLocations, default = "") : Table[string, string] =
   for key, callback in fieldPairs a.callbacks:
@@ -45,8 +38,6 @@ proc assignCallBacks(a : hasCallbacksBools) : Table[string, string] =
 
 
 type 
-  Event = concept x
-    x is DepositOutcome or x is Exceptions
   MessageBackends* = enum
     SendDiscord, SendSMTP, SendTCP, SendUnixSocket, SendHTTP, SendNamedPipe
   MessageHandler* = object

@@ -80,7 +80,8 @@ create table WithdrawalRequest(
   withdrawalStrategy varchar(24) not null,
   withdrawalAddress varchar(256) not null,
   timeComplete time,
-  isComplete bool default false 
+  isComplete bool default false ,
+  isActive bool default true
 );
 
 
