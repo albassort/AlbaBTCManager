@@ -12,7 +12,6 @@ import os
 import libcurl
 import std/base64
 import times
-import shared
 
 type HalfBtcResponse* = object
   error* : RpcErrorCode
@@ -84,9 +83,6 @@ proc createTransaction*(client : BTCClient, outputs : Table[string, float], conf
     estimate = estimateSmartFee(client, confTarget, some(Economical)).resultObject["feerate"].getFloat()
   let rawHex = result.resultObject["hex"].getStr()
   let funded = fundrawtransaction(client, rawHex, %* {"fee_rate" : estimate})
-
-  #TODO: add possibility to reject fee estimate
-  
   if funded.errorCode != RpcNoError:
     return E.err funded
   else:
