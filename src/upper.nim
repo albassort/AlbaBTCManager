@@ -34,5 +34,3 @@ proc scheduledTasks() =
   {.gcsafe.}:
     tasks.start()
 scheduledTasks()
-
-# nim c -r upper

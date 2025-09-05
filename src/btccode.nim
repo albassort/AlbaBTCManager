@@ -130,11 +130,14 @@ proc sendBTC*(client : BTCClient, outputs : Table[string, float], confTarget : u
   if submitted.isOK:
     return some makeTx(client, txid)
 
-proc doStuff(url : string, postBody = "", doPost = false) =
+proc initCurl(url : string, postBody = "", doPost = false) : PCurl =
+
   proc curlWriteFn(buffer: cstring, size: int, count: int,outstream: pointer): int =
+
+    # TODO: explain how this works because i forgor
     let outbuf = cast[ref string](outstream)
     outbuf[] &= buffer
-    echo outbuf[]
+    echo buffer
     result = size * count
     
   let webData: ref string = new string
@@ -160,11 +163,32 @@ proc doStuff(url : string, postBody = "", doPost = false) =
   else:
     discard curl.easy_setopt(OPT_HTTPGET, 1)
 
+  return curl
 
 
-  let ret = curl.easy_perform()
-  if ret == E_OK:
-    echo(webData[])
 
 when isMainModule:
-  doStuff("https://localhost:8080/v1/invoices/subscribe")
+  let curl1 = initCurl("https://localhost:8080/v1/invoices/subscribe")
+
+  let curl2 = initCurl("https://localhost:8080/v1/channels/subscribe")
+
+  let multi = multi_init()
+
+  doAssert multi.multi_add_handle(curl1) == M_OK
+  doAssert multi.multi_add_handle(curl2) == M_OK
+
+  var stillRunning : int32
+  doAssert multi_perform(multi, stillRunning) == M_OK
+
+  echo stillRunning
+  # MAKE THE TOTAL NUMBER OF CONNECTIONS??
+  while stillRunning == 2:
+      # THis is what is used in the example but it was not wrapped.
+      #mc = curl_multi_poll(multi, NULL, 0, 1000, NULL);
+      echo "looomao"
+      doAssert multi_remove_handle(multi, curl1) == M_OK
+      doAssert multi_remove_handle(multi, curl2) == M_OK
+
+      easy_cleanup(curl1) 
+      easy_cleanup(curl2)
+      break

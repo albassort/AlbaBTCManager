@@ -179,7 +179,7 @@ proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
     newChannel[].send(toChannel)
 
 proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
-  #inspired by TCB hehe
+  ## inspired by TCB hehe
   var connections = initTable[cint, ptr Socket]()
   #id -> cint -> connections -> socket
   var pendingReplies = initTable[float, cint]()
