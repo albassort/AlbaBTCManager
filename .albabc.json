@@ -1,25 +1,34 @@
 {
-  "envVars": {
+  "env_vars": {
     "WALADR": "bcrt1q5ezrg7u0v43g0dvya2m85f8h2ftd9r5839xme7",
     "RPCP": "password1",
     "RPCU": "user1",
     "RPCX": "/mnt/btc/bitcoin-28.0/bin/bitcoin-cli",
     "RPCPORT": "18011"
   },
-  "buildCommands": [
-    {
-      "name": "Compile and run upper",
-      "shell_cmd": "timeout 120 nim c -r upper",
+  "build_commands": {
+    "1": {
+      "name": "Compie and run upper",
+      "shell_cmd": "nim c upper",
       "cwd": "./src/",
+      "autoopen_ongoing": true,
       "autoopen": true,
       "print_result": false
     },
-    {
+    "2": {
       "name": "Generate RPC",
       "shell_cmd": "$RPCX -rpcport=$RPCPORT -rpcpassword=$RPCP -rpcuser=$RPCU -regtest generatetoaddress 50 $WALADR",
       "cwd": "./src/",
-      "autoopen": true,
+      "autoopen": false,
       "print_result": true
+    },
+    "3": {
+      "name": "Generate RPC",
+      "shell_cmd": "nim c -r $ARG1",
+      "cwd": "./src/",
+      "autoopen": true,
+      "autoopen_ongoing": true,
+      "min_args": 1
     }
-  ]
+  }
 }
