@@ -1,6 +1,6 @@
 {
   "env_vars": {
-    "WALADR": "bcrt1q5ezrg7u0v43g0dvya2m85f8h2ftd9r5839xme7",
+    "WALADR": "bcrt1q5kterpy9ljv82csvzazrly6xn9eelv757d5n2p",
     "RPCP": "password1",
     "RPCU": "user1",
     "RPCX": "/mnt/btc/bitcoin-28.0/bin/bitcoin-cli",
