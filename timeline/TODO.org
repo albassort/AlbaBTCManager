@@ -1,8 +1,8 @@
 * TODO write  docs!
   SCHEDULED: <2025-09-06 Sat> DEADLINE: <2025-09-18 Thu>
 
-* TODO Finish curl listeners
-  DEADLINE: <2025-09-07 Sun> SCHEDULED: <2025-09-06 Sat>
+* DONE Finish curl listeners
+  DEADLINE: <2025-09-07 Sun> SCHEDULED: <2025-09-06 Sat> CLOSED: <2025-09-07 04:15>
   This task is relatively straight forward, its simply making the subscribers listen ad report.
 
 * TODO Implement transaction tracking and notifications 
@@ -20,8 +20,10 @@
 *** TODO Implement peer connect notifications
 *** TODO Implement channel opening notifications
 *** TODO  Implement invoice generation 
-
 *** TODO Implement notifications for when a given invoice was paid across a channel
+
+*** TODO TXID Channel monitoring
+    When a channel is opened, it gives you a "pending_channel", however, the TXID associated with this needs to be tracked. In addition, channels needs to be check periodically 
 
 ** TODO Connect BTC to the API
    SCHEDULED: <2025-09-10 Wed> DEADLINE: <2025-09-11 Thu>
@@ -32,7 +34,6 @@
 *** TODO Generating payment request
 
 *** TODO Transferring payments
-
 
 * TODO implement extensive testing on ALL api calls.
   SCHEDULED: <2025-09-08 Mon> DEADLINE: <2025-09-13 Sat>

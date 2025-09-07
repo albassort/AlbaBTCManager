@@ -44,6 +44,8 @@ type
     lock : Lock
     #amount of pending messages
     pCount : uint
+    reading : bool
+    jsonBuffer : string
 
 type State = enum
   Poll, Reconfigure
@@ -143,14 +145,59 @@ proc sendBTC*(client : BTCClient, outputs : Table[string, float], confTarget : u
   if submitted.isOK:
     return some makeTx(client, txid)
 
+# Here onward is LND
+type 
+  InvoiceState = enum
+    Open = "OPEN", Closed = "CLOSED"
+
+  HLTC* = object
+    chanId : string
+    amountMSat : int
+    acceptHeight : int
+    expiryHeight : int
+    acceptTime : int
+    expiryTime : int
+    state : InvoiceState
+
+  Invoice* = object
+    memo : string
+    value : int
+    settled : bool
+    expiry : int
+    state : InvoiceState
+    paymentRequest : string
+    amtPaidSat : int
+    chanId : string
+    htlcs : seq[HLTC]
+
 proc initCurl(url : string, resultStream : ptr CurlMessageBuffer, postBody = "", doPost = false) : PCurl =
 
   proc curlWriteFn(buffer: cstring, size: int, count: int, outstream: pointer): int =
 
     let curlBuffer = cast[ptr CurlMessageBuffer](outstream)
+    let strBuff = $buffer
+    let atEnd = (strBuff)[^3 .. ^1]  == "\n\r\n"
+    let reading = curlBuffer[].reading
+    echo (atEnd, reading)
+    
     withLock curlBuffer[].lock:
-      curlBuffer[].buffer.add($buffer)
-      curlBuffer[].pCount += 1 
+      if reading:
+        let bstring = curlBuffer.jsonBuffer
+        let current = bstring & strBuff
+        if atEnd: 
+          curlBuffer[].buffer.add(current)
+          curlBuffer[].pCount += 1
+          curlBuffer[].reading = false
+        else:
+          curlBuffer.jsonBuffer = current
+      else:
+        if atEnd:
+          curlBuffer[].buffer.add(strBuff)
+          curlBuffer[].pCount += 1
+        else:
+          curlBuffer.jsonBuffer = strBuff
+          curlBuffer[].reading = true
+
     return size * count
     
   let curl = easy_init()
@@ -182,11 +229,7 @@ const libname = "libcurl.so(|.4)"
 proc multi_poll*(multi_handle: PM, skip : int, extra_nfds : uint32, timeout : int32, ret : var int32): Mcode{.cdecl,dynlib: libname, importc: "curl_multi_poll".}
 
 
-when isMainModule:
-  let baseUrl = "https://localhost:8080/v1/"
-  let endPoints = @["invoices/subscribe", "channels/subscribe", "transactions/subscribe",
-                    "gra1h/subscribe",  "state/subscribe", "peers/subscribe"]
-
+iterator getUpdates(endPoints : seq[string]) : (string, string) = 
   let endPointCount = endPoints.len
 
   # Keeping theme out of the table for memory safety
@@ -203,13 +246,15 @@ when isMainModule:
 
     curlToStream = newTable[PCurl, ptr CurlMessageBuffer]()
 
-    for endPoint in endPoints:
+    for url in endPoints:
       var curlStream : CurlMessageBuffer
+      curlStream.url = url
       initLock(curlStream.lock)
       curlStreams.add(curlStream)
 
       let point = addr curlStreams[curlStreams.high]
-      let newCurl = initCurl(baseUrl & endPoint, point)
+
+      let newCurl = initCurl(url, point)
       curlToStream[newCurl] = point
 
     multi = multi_init()
@@ -217,7 +262,7 @@ when isMainModule:
        doAssert multi.multi_add_handle(curl) == M_OK
 
   initEndPoints()
-  quit 1
+
   var stillRunning : int32
   doAssert multi_perform(multi, stillRunning) == M_OK
   var count = 0
@@ -235,7 +280,7 @@ when isMainModule:
         if curlStream[].pCount != 0:
           withLock curlStream[].lock:
             for message in curlStream[].buffer:
-              echo (message, "MESSAGE")
+              yield (message, curlStream[].url)
             curlStream[].buffer.setLen(0)
             curlStream[].pCount = 0
         
@@ -262,14 +307,25 @@ when isMainModule:
     #   if message == nil: break
     #   echo message[].msg
     echo "Disonnection detected, disconnecting all endpoints and reconnecting"
+
+    if discon == 3:
+      echo "too many dissonnections!"
+      quit 1
+
     discon += 1
     for curl in curlToStream.keys:
       doAssert multi_remove_handle(multi, curl) == M_OK
       easy_cleanup(curl)
       initEndPoints()
 
-    quit 1
     state = Poll
       # temp debug
 
+when isMainModule:
 
+  let baseUrl = "https://localhost:8080/v1/"
+  let endPoints = @["invoices/subscribe", "channels/subscribe", "transactions/subscribe",
+                    "graph/subscribe",  "state/subscribe", "peers/subscribe"]
+
+  for message, url in getUpdates(endPoints.map(ep => baseUrl & ep)):
+    echo (message, url)
