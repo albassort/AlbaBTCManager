@@ -4,7 +4,9 @@
     "RPCP": "password1",
     "RPCU": "user1",
     "RPCX": "/mnt/btc/bitcoin-28.0/bin/bitcoin-cli",
-    "RPCPORT": "18011"
+    "RPCPORT": "18011",
+    "LND1": "/mnt/btc/lnd-linux-amd64-v0.19.2-beta/lncli --network=regtest --rpcserver=127.0.0.1:10009 --tlscertpath=/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir2/tls.cert --macaroonpath=/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir2/data/chain/bitcoin/regtest/admin.macaroon",
+    "LND2": "/mnt/btc/lnd-linux-amd64-v0.19.2-beta/lncli --network=regtest --rpcserver=127.0.0.1:10008 --tlscertpath=/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir1/tls.cert --macaroonpath=/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir1/data/chain/bitcoin/regtest/admin.macaroon"
   },
   "build_commands": {
     "1": {
@@ -29,6 +31,38 @@
       "autoopen": true,
       "autoopen_ongoing": true,
       "min_args": 1
+    },
+    "4": {
+      "name": "Generate RPC",
+      "shell_cmd": "$LND1 $ARG1 $ARG2 $ARG3",
+      "cwd": ".",
+      "autoopen": true,
+      "min_args": 1
+    },
+    "5": {
+      "name": "Generate RPC",
+      "shell_cmd": "$LND2 $ARG1 $ARG2 $ARG3",
+      "cwd": ".",
+      "autoopen": true,
+      "min_args": 1
+    },
+    "oc": {
+      "name": "oppen_channel",
+      "shell_cmd": "$LND2 openchannel 03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5 --local_amt=50000; $RPCX -rpcport=$RPCPORT -rpcpassword=$RPCP -rpcuser=$RPCU -regtest generatetoaddress 50 $WALADR",
+      "cwd": ".",
+      "autoopen": true
+    },
+    "cc": {
+      "name": "oppen_channel",
+      "shell_cmd": "$LND2 closeallchannels -s; $RPCX -rpcport=$RPCPORT -rpcpassword=$RPCP -rpcuser=$RPCU -regtest generatetoaddress 50 $WALADR",
+      "cwd": ".",
+      "autoopen": true
+    },
+    "gentxevent": {
+      "name": "gentx",
+      "shell_cmd": "$LND2 openchannel 03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5 --local_amt=50000 > /dev/null; $RPCX -rpcport=$RPCPORT -rpcpassword=$RPCP -rpcuser=$RPCU -regtest generatetoaddress 50 $WALADR > /dev/null; payReq=$($LND1 addinvoice --amt=5000 | jq -r .payment_request); $LND2 payinvoice -f $payReq; $LND2 closeallchannels -s",
+      "cwd": ".",
+      "autoopen": true
     }
   }
 }

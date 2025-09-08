@@ -15,6 +15,7 @@ import std/base64
 import times
 import streams
 import locks
+import jsony
 
 type HalfBtcResponse* = object
   error* : RpcErrorCode
@@ -122,9 +123,6 @@ proc submitBTC*(client : BTCClient, rawHex : string, txid : var string, failedSi
 
   result = ok sendRawTx
   txid = sendRawTx.resultObject.getStr()
-  
-
-  
 
 proc sendBTC*(client : BTCClient, outputs : Table[string, float], confTarget : uint, walletPassword : options.Option[string] = none[string]()) :  options.Option[TX] =
  
@@ -147,6 +145,99 @@ proc sendBTC*(client : BTCClient, outputs : Table[string, float], confTarget : u
 
 # Here onward is LND
 type 
+  ChannelEventType = enum
+    INACTIVE = "INACTIVE_CHANNEL"
+    ACTIVE = "ACTIVE_CHANNEL"
+    CLOSED = "CLOSED_CHANNEL"
+    PENDING = "PENDING_OPEN_CHANNEL"
+    OPEN = "OPEN_CHANNEL"
+    RESOLVED = "FULLY_RESOLVED_CHANNEL"
+
+  ActiveChannel = object
+    fundingTxidBytes : string
+    outputIndex : int
+  InactiveChannel = object
+    fundingTxidBytes : string
+    outputIndex : int
+  ResolvedChannel = object
+    fundingTxidBytes : string
+    outputIndex : int
+  PendingChannel = object 
+    txid : string
+    outputIndex : int
+    freePerVbyte : int
+    localCloseTx : bool
+  OpenChannel = object
+    active : bool
+    remotePubkey : string
+    channelPoint : string
+    chanId : string
+    capacity : string
+    localBalance : string
+    remoteBalance : string
+    commitFee : string
+    commitWeight : string
+    feePerKw : string
+    unsettledBalance : string
+    totalSatoshisSent : string
+    totalSatoshisReceived : string
+    numUpdates : string
+    pendingHtlcs : seq[HLTC]            # original was []
+    csvDelay : int                  # original was 144 (number)
+    private : bool
+    initiator : bool
+    chanStatusFlags : string
+    localChanReserveSat : string
+    remoteChanReserveSat : string
+    staticRemoteKey : bool
+    commitmentType : string
+    lifetime : string
+    uptime : string
+    closeAddress : string
+    pushAmountSat : string
+    thawHeight : int                # original was 0 (number)
+    zeroConf : bool
+    zeroConfConfirmedScid : string
+    peerAlias : string
+    peerScidAlias : string
+    memo : string
+    customChannelData : string
+
+  ClosedChannel = object
+    channelPoint : string
+    chanId : string
+    chainHash : string
+    closingTxHash : string
+    remotePubkey : string
+    capacity : string
+    closeHeight : int
+    settledBalance : string
+    timeLockedBalance : string
+    closeType : string
+    openInitiator : string
+    closeInitiator : string
+    # i dont know these typues yet
+    # resolutions : seq[]
+    # aliasScids : seq[]
+    zeroConfConfirmedScid : string
+    customChannelData : string
+
+    # aliasScids : seq[]              
+  ChannelEvent = object
+    case event: ChannelEventType
+    of PENDING:
+      pendingOpenChannel : PendingChannel
+    of ACTIVE:
+      activeChannel : ActiveChannel
+    of INACTIVE:
+      inactiveChannel : InactiveChannel
+    of CLOSED:
+      closedChannel : ClosedChannel
+    of OPEN:
+      openChannel : OpenChannel
+    of RESOLVED:
+      fullyResolvedCHannel : ResolvedChannel 
+
   InvoiceState = enum
     Open = "OPEN", Closed = "CLOSED"
 
@@ -158,7 +249,6 @@ type
     acceptTime : int
     expiryTime : int
     state : InvoiceState
-
   Invoice* = object
     memo : string
     value : int
@@ -170,7 +260,88 @@ type
     chanId : string
     htlcs : seq[HLTC]
 
+
+type
+  EventType =  enum
+    InvoiceEvent, Channels, Transactions, Peers, StateUpdate
+  OutputDetail = object
+    outputType: string
+    address: string
+    pkScript: string
+    outputIndex: string   # string in JSON
+    amount: string        # string in JSON
+    isOurAddress: bool
+
+  PreviousOutpoint = object
+    outpoint: string
+    isOurOutput: bool
+
+  TxEvent = object
+    txHash: string
+    amount: string
+    numConfirmations: int
+    blockHash: string
+    blockHeight: int
+    timeStamp: string      # string in JSON
+    totalFees: string
+    destAddresses: seq[string]
+    outputDetails: seq[OutputDetail]
+    rawTxHex: string
+    label: string
+    previousOutpoints: seq[PreviousOutpoint]
+  PeerEvents = enum
+    ONLINE = "PEER_ONLINE", OFFLINE = "PEER_OFFLINE"
+  PeerEvent = object
+    pubKey : string
+    event : PeerEvents
+  StateEvent = object
+    state : string 
+  SubscribedEvent* = object
+    case source* : EventType
+    of InvoiceEvent:
+      invoice : Invoice
+    of Channels:
+      channel : ChannelEvent
+    of Transactions:
+      tx : TxEvent
+    of Peers:
+      peer : PeerEvent 
+    of StateUpdate:
+      state : StateEvent 
+      
+
+proc initPeerEvent(a : string) : PeerEvent = 
+  var parsed = (fromJson a)["result"]
+  let event = parsed["type"]
+  # We need to rename type to event because... this is easier
+  parsed["event"] = event
+  result = ($parsed).fromJson(PeerEvent)
+
+
+proc initChannel(a : string) : ChannelEvent =
+  var parsed = (fromJson a)["result"]
+  let event = parsed["type"]
+  # We need to rename type to event because... this is easier
+  parsed["event"] = event
+  result = ($parsed).fromJson(ChannelEvent)
+
+proc initTransaction(a : string) : TxEvent = 
+  var parsed = (fromJson a)["result"]
+  # We need to rename type to event because... this is easier
+  result = ($parsed).fromJson(TxEvent)
+
+proc initState(a : string) : StateEvent = 
+  result.state = (fromJson a)["result"]["state"].getStr()
+
+proc initInvoice(a : string) : Invoice = 
+  var parsed = (fromJson a)["result"]
+  # We need to rename type to event because... this is easier
+  result = ($parsed).fromJson(Invoice)
+
+
+
 proc initCurl(url : string, resultStream : ptr CurlMessageBuffer, postBody = "", doPost = false) : PCurl =
+
 
   proc curlWriteFn(buffer: cstring, size: int, count: int, outstream: pointer): int =
 
@@ -229,7 +400,23 @@ const libname = "libcurl.so(|.4)"
 proc multi_poll*(multi_handle: PM, skip : int, extra_nfds : uint32, timeout : int32, ret : var int32): Mcode{.cdecl,dynlib: libname, importc: "curl_multi_poll".}
 
 
-iterator getUpdates(endPoints : seq[string]) : (string, string) = 
+iterator getUpdates(root : string) : SubscribedEvent = 
+  let ep = {
+    "invoices/subscribe" : InvoiceEvent,
+    "channels/subscribe" : Channels,
+    "transactions/subscribe" : Transactions,
+    "state/subscribe" : StateUpdate,
+    "peers/subscribe" : Peers
+  }.toTable()
+
+  var endPoints : seq[string]
+  var epToType = initTable[string, EventType]()
+
+  for e, et in ep.pairs:
+    let url = root & e
+    endPoints.add(url) 
+    epToType[url] = et
+
   let endPointCount = endPoints.len
 
   # Keeping theme out of the table for memory safety
@@ -280,7 +467,25 @@ iterator getUpdates(endPoints : seq[string]) : (string, string) =
         if curlStream[].pCount != 0:
           withLock curlStream[].lock:
             for message in curlStream[].buffer:
-              yield (message, curlStream[].url)
+              let responseType = epToType[curlStream[].url]
+              echo message
+              echo responseType
+              case responseType
+              of InvoiceEvent:
+                let inter = initInvoice(message) 
+                yield SubscribedEvent(source : responseType, invoice : inter)
+              of Channels:
+                let inter = initChannel(message)
+                yield SubscribedEvent(source : responseType, channel : inter)
+              of Transactions:
+                let inter = initTransaction(message)
+                yield SubscribedEvent(source : responseType, tx : inter)
+              of Peers:
+                let inter = initPeerEvent(message)
+                yield SubscribedEvent(source : responseType, peer : inter)
+              of StateUpdate:
+                let inter = initState(message)
+                yield SubscribedEvent(source : responseType, state : inter)
             curlStream[].buffer.setLen(0)
             curlStream[].pCount = 0
         
@@ -324,8 +529,6 @@ iterator getUpdates(endPoints : seq[string]) : (string, string) =
 when isMainModule:
 
   let baseUrl = "https://localhost:8080/v1/"
-  let endPoints = @["invoices/subscribe", "channels/subscribe", "transactions/subscribe",
-                    "graph/subscribe",  "state/subscribe", "peers/subscribe"]
+  for event in getUpdates(baseUrl):
+    echo event
 
-  for message, url in getUpdates(endPoints.map(ep => baseUrl & ep)):
-    echo (message, url)

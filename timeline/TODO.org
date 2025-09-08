@@ -1,10 +1,8 @@
 * TODO write  docs!
   SCHEDULED: <2025-09-06 Sat> DEADLINE: <2025-09-18 Thu>
-
 * DONE Finish curl listeners
-  DEADLINE: <2025-09-07 Sun> SCHEDULED: <2025-09-06 Sat> CLOSED: <2025-09-07 04:15>
-  This task is relatively straight forward, its simply making the subscribers listen ad report.
-
+  DEADLINE: <2025-09-07 Sun> SCHEDULED: <2025-09-06 Sat> CLOSED: <2025-09-08 04:06>
+  I had previously set this to finished when, I wasn't thinking about it properly.I finished it in the commit this string appears
 * TODO Implement transaction tracking and notifications 
   SCHEDULED: <2025-09-07 Sun> DEADLINE: <2025-09-08 Mon>
   AlbaBTCPay should be able to track transactions and notify you when some of them get through. 
