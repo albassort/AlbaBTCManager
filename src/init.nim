@@ -224,10 +224,10 @@ proc initCryptoClients*() : CryptoClients =
 
 const schema = staticRead("./schema.sql")
 #TODO: make htis not break
-#
-when isMainModule:
+
+var db* : DbConn
+proc init() = 
   echo initMessageManager(globalConfig[])
-  var db : DbConn
 
   if not fileExists(globalConfig[].db.sqliteDbPath):
 
@@ -258,9 +258,10 @@ when isMainModule:
       echo row
       if row[1] == "CHANGE" or row[2] == "ME!":
         echo "Please change the username and password of your admin user (user rowid=1)"
-        quit(1)
+        #quit(1)
 
     except Exception as e:
       echo "It seems that you haven't initiated the database, or there is some issue with it."
       echo e[]
 
+init()

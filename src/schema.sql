@@ -12,7 +12,7 @@ CREATE TABLE UserCryptoChange (
     Time time NOT NULL DEFAULT (strftime('%s','now')),
     UserRowId Integer references Users (RowId) not null,
 
-    CryptoType text not null,  
+    CoinType text not null,  
     CryptoChange decimal not null,
 
     WithdrawalRowId Integer references UserDepositEvent (RowId),
@@ -87,8 +87,10 @@ create table WithdrawalRequest(
 create table TransactionWatch(
   TxId text not null,
   BlockHeightCreated int not null,
-  confTargetNotify int not null,
-  callBack json,
-  CryptoType text not null
-)
+  ConfTarget int not null,
+  CallBack json,
+  CoinType text not null,
+  Notified bool not null default false,
+  NotFound bool not null default false
+);
 

@@ -1,7 +1,7 @@
 import times 
 import db_connector/db_sqlite
 import std/options
-import Json
+import json
 import NimBTC
 import tables
 import ./cheapORMSqlite
@@ -13,7 +13,7 @@ type
 
   WithdrawalStrategy* = enum
     Group = "group", Single = "single"
-  CryptoTypes* = enum
+  CoinType* = enum
     BTC = "BTC"
   User* = object
     rowId* : int
@@ -40,7 +40,7 @@ type
   DepositRequest* = object
     rowId* : int
     address* : string
-    coinType* : CryptoTypes
+    coinType* : CoinType
     validLengthSeconds* : int
     payToUser* : Option[int]
     depositAmount* : float64
@@ -67,45 +67,60 @@ type
     rowId* : int
     userRowId* : int64
     timeRecieved* : Time 
-    cryptoType* : CryptoTypes
+    cryptoType* : CoinType
     cryptoAmount* : float64
     withdrawalStrategy* : WithdrawalStrategy
     withdrawalAddress* : string
     timeComplete* : Option[Time]
     isComplete* : bool
+  TransactionWatch* = object
+    rowId : int
+    txId* : string
+    blockHeightCreated* : string 
+    confTarget* : int
+    callBack* : JsonNode
+    cryptoType* : CoinType
+    notified* : bool
+    motFound* : bool
 
-proc insertWithdrawalRequest*(db : DbConn, userRowId : int, cryptoType : CryptoTypes, strategy : WithdrawalStrategy,  amount : float64, address : string) : int64 =
-  return db.insertId(sql"insert into WithdrawalRequest(UserRowId, CryptoType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress) VALUES (?,?,?,?,?)", userRowId, $cryptoType, amount, $strategy, address)
+proc insertWithdrawalRequest*(db : DbConn, userRowId : int, cryptoType : CoinType, strategy : WithdrawalStrategy,  amount : float64, address : string) : int64 =
+  return db.insertId(sql"insert into WithdrawalRequest(UserRowId, CoinType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress) VALUES (?,?,?,?,?)", userRowId, $cryptoType, amount, $strategy, address)
 
-proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CryptoTypes, amount : float64, 
+proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CoinType, amount : float64, 
   depositRequestRowId = -1, withdarawalRequestRowId = -1) =
 
   doAssert depositRequestRowId == -1 xor withdarawalRequestRowId == -1
 
-  db.exec(sql"insert into UserCryptoChange(UserRowId, CryptoType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1))",
+  db.exec(sql"insert into UserCryptoChange(UserRowId, CoinType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1))",
     userRowId, $cryptoType, amount, depositRequestRowId, withdarawalRequestRowId)
   
-proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CryptoTypes, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
+proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CoinType, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
 
   let insert = sql"""insert into DepositRequest(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount) values (?, ?, ?, ?, ?)"""
   return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, depositAmount)
   discard ""
   #discard getNewAddress
  
-proc getAmountForUserByCrypto(db : DbConn, userRowId : int) : Table[CryptoTypes, float64] =  
+proc getAmountForUserByCrypto(db : DbConn, userRowId : int) : Table[CoinType, float64] =  
 
-  const totalCryptoForType = sql"select sum(CryptoChange), CryptoType from UserCryptoChange where UserRowId = ? group by CryptoType"
+  const totalCryptoForType = sql"select sum(CryptoChange), CoinType from UserCryptoChange where UserRowId = ? group by CoinType"
 
-  result = fastRowsTyped[(float64, string)](db, totalCryptoForType, userRowId).toSeq().map(x=>x.get()).keyVal(x=> parseEnum[CryptoTypes](x[1]), x=> x[0])
-  for kind in CryptoTypes:
+  result = fastRowsTyped[(float64, string)](db, totalCryptoForType, userRowId).toSeq().map(x=>x.get()).keyVal(x=> parseEnum[CoinType](x[1]), x=> x[0])
+  for kind in CoinType:
     if kind notin result:
       result[kind] = 0
 
-proc createWithdrawalRequest*(db : DbConn, address : string, amount : float64, cryptoType : CryptoTypes, userRowId : int, withdrawalStrategy: WithdrawalStrategy) : int = 
+proc createWithdrawalRequest*(db : DbConn, address : string, amount : float64, cryptoType : CoinType, userRowId : int, withdrawalStrategy: WithdrawalStrategy) : int = 
 
   let insert = sql"""insert into WithdrawalRequest(userRowId, cryptoType, cryptoAmount, withdrawalStrategy, withdrawalAddress
   ) values (?, ?, ?, ?, ?)"""
   return db.insertId(insert, cryptoType, amount, $cryptoType, address)
+
+proc insertTxWatch*(db : DbConn, txId : string, blockHeightCreated, confTarget : int,  cryptoType : CoinType, callBack = newJNull()) : int = 
+  let insert = sql"""insert into TransactionWatch(Txid, BlockHeightCreated, ConfTarget, CallBack, CoinType)
+  values (?, ?,?, NULLIF(?, 'null'),?)"""
+  return db.insertId(insert, txId, blockHeightCreated, confTarget, $callBack,  cryptoType)
+  
 
 
 

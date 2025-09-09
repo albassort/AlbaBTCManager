@@ -63,6 +63,13 @@
       "shell_cmd": "$LND2 openchannel 03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5 --local_amt=50000 > /dev/null; $RPCX -rpcport=$RPCPORT -rpcpassword=$RPCP -rpcuser=$RPCU -regtest generatetoaddress 50 $WALADR > /dev/null; payReq=$($LND1 addinvoice --amt=5000 | jq -r .payment_request); $LND2 payinvoice -f $payReq; $LND2 closeallchannels -s",
       "cwd": ".",
       "autoopen": true
+    },
+    "single": {
+      "name": "Generate RPC",
+      "shell_cmd": "$RPCX -rpcport=$RPCPORT -rpcpassword=$RPCP -rpcuser=$RPCU -regtest generatetoaddress 1 $WALADR",
+      "cwd": "./src/",
+      "autoopen": false,
+      "print_result": true
     }
   }
 }

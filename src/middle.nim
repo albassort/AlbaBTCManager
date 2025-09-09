@@ -10,7 +10,7 @@ import ./cheapORMSqlite
 import sequtils
 import sugar
 import times
-import ./btccode
+import ./crypto/btccode
 import groupBy
 import ./dbcode
 export dbcode
@@ -66,11 +66,11 @@ proc validateDepositsBTC*(client : BTCClient, db : DbConn,  a : DepositRequest, 
   quit 1 
   return ok FullyFunded
 
-const totalCryptoForType = sql"select coalesce(sum(CryptoChange), 0) from UserCryptoChange where CryptoType = ? and userRowId = ?"
+const totalCryptoForType = sql"select coalesce(sum(CryptoChange), 0) from UserCryptoChange where CoinType = ? and userRowId = ?"
 
 #PRAGMA busy_timeout = 5000;
 #
-proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinType : CryptoTypes, withdrawalType: WithdrawalStrategy, coinAmount : float64) : Result[void, Exceptions] =
+proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinType : CoinType, withdrawalType: WithdrawalStrategy, coinAmount : float64) : Result[void, Exceptions] =
   let totalCurrency = getRowTyped[(float64,)](db, totalCryptoForType, $coinType, user.rowId).get()[0]
   if totalCurrency > coinAmount:
     return err NotEnoughFunds
@@ -78,7 +78,7 @@ proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinTy
   dbCommitBalanceChange(db, user.rowid, coinType, coinAmount, id)
 
 
-proc handleWidhtrawals*(clients : CryptoClients, coinType: CryptoTypes, db : DbConn, a : seq[WithdrawalRequest]) : Result[string, Exceptions] =
+proc handleWidhtrawals*(clients : CryptoClients, coinType: CoinType, db : DbConn, a : seq[WithdrawalRequest]) : Result[string, Exceptions] =
 
   if a.map(x=> x.cryptoType).deduplicate().len == 1:
     return err MultipleCoinsInWithdrawal
@@ -157,7 +157,7 @@ proc monitorTxId*(clients : CryptoClients, db : DbConn, txid : string, confTarge
   echo callback
 
 
-proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CryptoTypes, depositAmount : float, userRowId : int = 1) : Option[string] {.gcsafe.} =
+proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CoinType, depositAmount : float, userRowId : int = 1) : Option[string] {.gcsafe.} =
   case cryptoType:
     of BTC:
       #TODO: check if some; send out notif if not and enabled
