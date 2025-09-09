@@ -1,4 +1,4 @@
-
+#include <time.h>
 #include <czmq.h>
 #include <stdio.h>
 
@@ -22,3 +22,4 @@ bool get_hash_hex(zframe_t *frame, unsigned char *result) {
   }
   return true;
 };
+
