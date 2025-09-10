@@ -9,32 +9,35 @@ import tables
 import Json
 
 proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
-  let boolConverstionTable = {"f" : false, "t" : true}.toTable()
 
   when b is string:
     if a.len != 0:
       b = a
-  when b is int or b is int64 or b is int32 or b is int16 or b is int8:
+  elif b is SomeSignedInt:
     if a!= "":
       b = parseInt(a)
     else:
       b = 0
-  when b is uint or b is uint8 or b is uint16 or b is uint32 or b is uint64:
+  elif b is SomeUnsignedInt:
     if a != "":
       b = parseUInt(a)
     else:
       b = 0
-  when b is Time:
+  elif b is Time:
     #TODO: enforce UTC time.
     b = fromUnix(parseInt(a))
-  when b is bool:
-    if a in boolConverstionTable:
-      b = boolConverstionTable[a]
-    else:
-      b = parseBool(a)
-  when b is float:
+  elif b is bool:
+    b = 
+      case a
+      of "f":
+        false
+      of "t":
+        true
+      else:
+        b = parseBool(a)
+  elif b is float:
     b = parseFloat(a)
-  when b is Option:
+  elif b is Option:
     if a.high == -1:
       b = none[b.T]()
     else:
@@ -42,8 +45,10 @@ proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
       var dereference = newVariable[]
       assignFromString(a, dereference)
       b = some(dereference)
-  when b is JsonNode:
+  elif b is JsonNode:
     b = parseJson(a)
+  else:
+    {.error: "Type not supported".}
 
 proc convertRow[T](row: Row) : Option[T] {.gcsafe.}  =
   # Internal, attempts to convert a row to the given type
