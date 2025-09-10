@@ -1,4 +1,5 @@
 import puppy
+import algorithm
 import strformat
 import strutils
 import NimBTC
@@ -16,6 +17,8 @@ import times
 import streams
 import locks
 import jsony
+import base64
+import ./lndApiObjects
 
 
 # Here onward is LND
@@ -196,9 +199,6 @@ type
   SubscribeState = enum
     Poll, Reconfigure
 
-
-      
-
 proc initPeerEvent(a : string) : PeerEvent = 
   var parsed = (fromJson a)["result"]
   let event = parsed["type"]
@@ -207,11 +207,16 @@ proc initPeerEvent(a : string) : PeerEvent =
   result = ($parsed).fromJson(PeerEvent)
 
 
-proc initChannel(a : string) : ChannelEvent =
+proc initChannelEvent(a : string) : ChannelEvent =
   var parsed = (fromJson a)["result"]
-  let event = parsed["type"]
+  let event = 
+    if not parsed.contains("type"):
+      parsed.keys.toSeq[0].toUpperAscii()
+   else:
+      parsed["type"].getStr()
+  
   # We need to rename type to event because... this is easier
-  parsed["event"] = event
+  parsed["event"] = %* event
   result = ($parsed).fromJson(ChannelEvent)
 
 proc initTransaction(a : string) : TxEvent = 
@@ -227,12 +232,7 @@ proc initInvoice(a : string) : Invoice =
   # We need to rename type to event because... this is easier
   result = ($parsed).fromJson(Invoice)
 
-
-
-proc initCurl(url : string, resultStream : ptr CurlMessageBuffer, postBody = "", doPost = false) : PCurl =
-
-
-  proc curlWriteFn(buffer: cstring, size: int, count: int, outstream: pointer): int =
+proc curlStreamRead(buffer: cstring, size: int, count: int, outstream: pointer): int =
 
     let curlBuffer = cast[ptr CurlMessageBuffer](outstream)
     let strBuff = $buffer
@@ -259,29 +259,85 @@ proc initCurl(url : string, resultStream : ptr CurlMessageBuffer, postBody = "",
           curlBuffer[].reading = true
 
     return size * count
+
+
+proc initCurlCore(url : string, callbackPtr : pointer, 
+                writeFn : proc(a : cstring, b, c : int, d: pointer,): int,
+                userHeaders : TableRef[string, string] = nil
+                ) : PCurl =
     
   let curl = easy_init()
 
-  discard curl.easy_setopt(OPT_WRITEDATA, resultStream)
-  discard curl.easy_setopt(OPT_WRITEFUNCTION, curlWriteFn)
+  discard curl.easy_setopt(OPT_WRITEDATA, callbackPtr)
+  discard curl.easy_setopt(OPT_WRITEFUNCTION, writeFn)
   discard curl.easy_setopt(OPT_URL, url)
 
   let auth = readFile("/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir1/data/chain/bitcoin/regtest/admin.macaroon").toHex()
 
   var headers : Pslist 
   let authStr = &"Grpc-Metadata-macaroon: {auth}" 
-  let setheaders = slist_append(headers, authStr)
-  discard curl.easy_setopt(OPT_HTTPHEADER, setheaders);
+  var setheaders = slist_append(headers, authStr)
+  if userHeaders != nil:
+    for key,val in userHeaders.pairs:
+      let headerstr = &"{key}: {val}" 
+      echo headerstr
+      setheaders = slist_append(setheaders, headerstr)
+
+  discard curl.easy_setopt(OPT_HTTPHEADER, setheaders)
   discard curl.easy_setopt(OPT_CAINFO, "/mnt/coding/QestBet/THB/subrepos/albaBTCPay/testing/lndir1/tls.cert");
   discard curl.easy_setopt(OPT_SSL_VERIFYPEER, 1);
 
-  if doPost:
-    discard curl.easy_setopt(OPT_POSTFIELDS, postBody)
-    discard curl.easy_setopt(OPT_POSTFIELDSIZE, postBody.len)
-    discard curl.easy_setopt(OPT_HTTPPOST, 1)
-  else:
-    discard curl.easy_setopt(OPT_HTTPGET, 1)
+  return curl
 
+proc normalCurlRead(buffer: cstring, size: int, count: int, outstream: pointer): int =
+
+  let outstream = cast[ptr string](outstream)
+  let stringy = $buffer
+  outstream[] = outstream[] & stringy
+  echo outstream[]  
+
+  if stringy[^3 .. ^1]  == "\n\r\n":
+    return 0
+
+  return size * count
+
+
+proc initCurlGet(url : string, messageBuffer : ptr string) : PCurl =
+  var curl =  initCurlCore(url, messageBuffer, normalCurlRead)
+  discard curl.easy_setopt(OPT_HTTPGET, 1)
+  return curl
+
+
+proc initCurlPost(url : string, messageBuffer : ptr string, body : string, resultStr : cstring, alternateVerb = "") : PCurl =
+
+  let resultStr = cast[cstring](alloc0(body.len+1))
+  copyMem(resultStr, addr body[0], body.len)
+
+  echo body
+  echo resultStr
+  echo ($resultStr).len
+  echo body.len
+
+  var table = newTable[string, string]()
+  table["Content-Type"] = "application/json"
+
+  var curl =  initCurlCore(url, messageBuffer, normalCurlRead, table)
+
+  if alternateVerb != "":
+
+    discard curl.easy_setopt(OPT_CUSTOMREQUEST, alternateVerb)
+  else:
+    discard curl.easy_setopt(OPT_HTTPPOST, 1)
+
+  discard curl.easy_setopt(OPT_POSTFIELDS, resultStr)
+  discard curl.easy_setopt(OPT_POSTFIELDSIZE, body.len)
+  
+  return curl
+
+
+proc initCurlStream(url : string, stream : ptr CurlMessageBuffer) : PCurl =
+  var curl =  initCurlCore(url, stream, curlStreamRead)
+  discard curl.easy_setopt(OPT_HTTPGET, 1)
   return curl
 
 
@@ -330,12 +386,14 @@ iterator getUpdates(root : string) : SubscribedEvent =
 
       let point = addr curlStreams[curlStreams.high]
 
-      let newCurl = initCurl(url, point)
+      let newCurl = initCurlStream(url, point)
       curlToStream[newCurl] = point
 
     multi = multi_init()
     for curl in curlToStream.keys:
-       doAssert multi.multi_add_handle(curl) == M_OK
+       let res = multi.multi_add_handle(curl) 
+       echo res 
+       doAssert res == M_OK
 
   initEndPoints()
 
@@ -364,7 +422,7 @@ iterator getUpdates(root : string) : SubscribedEvent =
                 let inter = initInvoice(message) 
                 yield SubscribedEvent(source : responseType, invoice : inter)
               of Channels:
-                let inter = initChannel(message)
+                let inter = initChannelEvent(message)
                 yield SubscribedEvent(source : responseType, channel : inter)
               of Transactions:
                 let inter = initTransaction(message)
@@ -415,9 +473,125 @@ iterator getUpdates(root : string) : SubscribedEvent =
     state = Poll
       # temp debug
 
-when isMainModule:
+proc makeInvoice*(memo : string, amtSat : int64, validDuration : int64 = 0, isAmp : bool = true) : JsonNode =
+  result = newJObject()
+  result["memo"] = %* memo
+  result["value"] = %* amtSat
+  result["expiry"] = %* validDuration
+  result["is_amp"] = %* isAmp
 
-  let baseUrl = "https://localhost:8080/v1/"
-  for event in getUpdates(baseUrl):
-    echo event
+
+proc payInvoice*(paymentRequest : string, amp = false, amt : uint64 = 0) : JsonNode =
+  # TOOD:  figure out how "cancelable" works.
+  result = newJObject()
+  result["payment_request"] = %* paymentRequest 
+  result["amt"] = %* amt
+  result["amp"] = %* amp
+
+
+proc makeChannel*(pubKey : string, localFundingAmtSat : uint, closeAddress : string = "", 
+                  memo : string = "", pushSat : uint64 = 0, targetConf = 6) : JsonNode =
+
+  result = newJObject()
+  result["node_pubkey_string"] = %* pubKey
+  result["local_funding_amount"] = %* localFundingAmtSat
+  if closeAddress != "":
+    result["close_address"] = %* closeAddress
+  result["target_conf"] = %* targetConf
+
+  if memo != "":
+    result["memo"] = %* memo
+
+  result["push_sat"] = %* pushSat
+
+
+
+#TODO: add hold
+
+proc closeChannel*(force : bool, deliveryAddress : string = "", targetConf : uint = 6) : JsonNode = 
+  ## We do not wait because we are already listening to the channel streamas. Otherwise we would just put it in a multi and kill it after we get our first message.
+  result = newJObject()
+  result["force"]  = %* force
+
+  if deliveryAddress != "":
+    result["delivery_address"]  = %* force
+
+  result["target_conf"]  = %* targetConf
+  result["no_wait"] = %* false
+
+proc invoiceTest() =
+  var messageBuf : string
+  var resultStr : cstring
+  let invoice = makeInvoice("this is a test", 5000)
+  let invoices = "https://localhost:8080/v1/invoices"
+  let curlGet = initCurlPost(invoices, addr messageBuf, $invoice, resultStr)
+  echo curlGet.easy_perform()
+  free(resultStr)
+  echo messageBuf
+
+proc reverseBase64(a : string) : string =
+  let raw = a.decode().reversed()
+  result = cast[string](raw).toHex().toLowerAscii()
+
+proc channelTest() : CreateChannelResult = 
+
+  let invoices = "https://localhost:8080/v1/channels"
+  var messageBuf : string
+  var resultStr : cstring
+
+
+  let pubkey = "03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5"
+  let thisIsAChannel = makeChannel("03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5", 20000)
+
+  let curlGet = initCurlPost(invoices, addr messageBuf, $thisIsAChannel, resultStr)
+
+  echo curlGet.easy_perform()
+  free(resultStr)
+
+  result = messageBuf.fromJson(CreateChannelResult)
+
+  #The endianness is backwards by defualt out of sheer spite.
+  result.fundingTxStr = reverseBase64 result.fundingTxidBytes
+
+proc makeAndCloseChannel() =
+  var messageBuf : string
+  var resultStr : cstring
+  let newChannel = channelTest()
+  echo "do the confirm, manually lol"
+  sleep 10000
+
+  let close = closeChannel(true)
+  let closePath = &"https://localhost:8080/v1/channels/{newChannel.fundingTxStr}/{newChannel.outputIndex}"
+
+  let curlGet = initCurlPost(closePath, addr messageBuf, $close, resultStr, "DELETE")
+
+  echo curlGet.easy_setopt(OPT_CUSTOMREQUEST, "DELETE")
+
+  echo curlGet.easy_perform()
+  echo "exited"
+  free(resultStr)
+  echo " print"
+
+  let responseJson = parseJson(messageBuf)["result"]["close_pending"]
+  var result = ($responseJson).fromJson(CloseChannelResult)
+  result.txidStr = reverseBase64 result.txid 
+  echo result
+  print result
+
+proc payTest() =
+
+  var messageBuf : string
+  var resultStr : cstring
+  let url = "https://localhost:8080/v2/router/send"
+
+  let payReq = "lnbcrt50u1p5vzstwpp5qmfjs37hmuq8gkavmkkaxyd8r8trx5azgm3geycadkjw0yu7qcrqdqqcqzzsxqyz5vqsp5mavs959sq5wzsuy8pgzqqkzgwjmeck63zj9f7lvzzrslcdzqe4as9qxpqysgqtwhg35rh2jkcpsy6fly3536je87pk8zh9wlfp3vcj7ncysf8wkgrmuegegqnjm2qngmvyzvez3ygpqm8xzxjy4k8r4musrmjc9ar49cqqnnhfc"
+
+  let toPay = payInvoice(payReq)
+
+  let curlGet = initCurlPost(url, addr messageBuf, $toPay, resultStr)
+
+  echo curlGet.easy_perform()
+  free(resultStr)
+  echo messageBuf
+
 

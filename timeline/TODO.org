@@ -3,8 +3,8 @@
 * DONE Finish curl listeners
   DEADLINE: <2025-09-07 Sun> SCHEDULED: <2025-09-06 Sat> CLOSED: <2025-09-08 04:06>
   I had previously set this to finished when, I wasn't thinking about it properly.I finished it in the commit this string appears
-* TODO Implement transaction tracking and notifications 
-  SCHEDULED: <2025-09-07 Sun> DEADLINE: <2025-09-08 Mon>
+* DONE Implement transaction tracking and notifications 
+  SCHEDULED: <2025-09-07 Sun> DEADLINE: <2025-09-08 Mon> CLOSED: <2025-09-09 04:30>
   AlbaBTCPay should be able to track transactions and notify you when some of them get through. 
 
 * TODO Implement API
@@ -15,13 +15,27 @@
    SCHEDULED: <2025-09-08 Mon> DEADLINE: <2025-09-11 Thu>
   Lightning should work smoothly and properly, in a centralized way, that makes all applications reliant upon it responsive.
 
-*** TODO Implement peer connect notifications
-*** TODO Implement channel opening notifications
-*** TODO  Implement invoice generation 
-*** TODO Implement notifications for when a given invoice was paid across a channel
+   As of this commit, its mostly implemented. There's more parts of the API of the API to expose. Currently we have: creating invoices, opening channels, closing channels, paying invoices. 
 
+   I want to add peers, and a few more endpoint scenarios like hold channels before startinb to build high level structures
+
+*** DONE Implement peer connect notifications
+*** DONE Implement channel opening notifications
+*** DONE  Implement invoice generation 
+  CLOSED: <2025-09-10 04:55>
+*** TODO Implement notifications for when a given invoice was paid across a channel
+    Kinda done. I mean, it came with getting the listeners working but specific invoices, no.
 *** TODO TXID Channel monitoring
-    When a channel is opened, it gives you a "pending_channel", however, the TXID associated with this needs to be tracked. In addition, channels needs to be check periodically 
+
+    I'm not sure if this is required because, in abstract, channels you don't create have no meaning. Anyone can open them to you. If they don't pay your invoices, you have no part in that. However, it might be uesful to monitor if a channel you made is closed. It might also be useful if you 
+    1. Make an invoice
+    2. This invoice has a callback identifier 
+    3. The person who paid this's IP and Pubkey becomes associated with the callback
+    4. When something happens to this chanenl, the piece of data associated with them will be used a shorthand for it
+    5. It also means you build data on clients, could be useful.
+
+    Previous entry was: "When a channel is opened, it gives you a "pending_channel", however, the TXID associated with this needs to be tracked. In addition, channels needs to be check periodically"
+
 
 ** TODO Connect BTC to the API
    SCHEDULED: <2025-09-10 Wed> DEADLINE: <2025-09-11 Thu>
