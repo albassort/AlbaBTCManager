@@ -1,4 +1,6 @@
 import puppy
+import uri
+import results
 import algorithm
 import strformat
 import strutils
@@ -116,18 +118,7 @@ type
     of RESOLVED:
       fullyResolvedCHannel : ResolvedChannel 
 
-  InvoiceState = enum
-    Open = "OPEN", Closed = "CLOSED"
-
-  HLTC* = object
-    chanId : string
-    amountMSat : int
-    acceptHeight : int
-    expiryHeight : int
-    acceptTime : int
-    expiryTime : int
-    state : InvoiceState
-  Invoice* = object
+  InvoiceSubscribe* = object
     memo : string
     value : int
     settled : bool
@@ -177,7 +168,7 @@ type
   SubscribedEvent* = object
     case source* : EventType
     of InvoiceEvent:
-      invoice : Invoice
+      invoice :InvoiceSubscribe 
     of Channels:
       channel : ChannelEvent
     of Transactions:
@@ -227,10 +218,10 @@ proc initTransaction(a : string) : TxEvent =
 proc initState(a : string) : StateEvent = 
   result.state = (fromJson a)["result"]["state"].getStr()
 
-proc initInvoice(a : string) : Invoice = 
+proc initInvoice(a : string) : InvoiceSubscribe = 
   var parsed = (fromJson a)["result"]
   # We need to rename type to event because... this is easier
-  result = ($parsed).fromJson(Invoice)
+  result = ($parsed).fromJson(InvoiceSubscribe)
 
 proc curlStreamRead(buffer: cstring, size: int, count: int, outstream: pointer): int =
 
@@ -311,7 +302,8 @@ proc initCurlGet(url : string, messageBuffer : ptr string) : PCurl =
 proc initCurlPost(url : string, messageBuffer : ptr string, body : string, resultStr : cstring, alternateVerb = "") : PCurl =
 
   let resultStr = cast[cstring](alloc0(body.len+1))
-  copyMem(resultStr, addr body[0], body.len)
+  if body.len != 0:
+    copyMem(resultStr, addr body[0], body.len)
 
   echo body
   echo resultStr
@@ -324,7 +316,6 @@ proc initCurlPost(url : string, messageBuffer : ptr string, body : string, resul
   var curl =  initCurlCore(url, messageBuffer, normalCurlRead, table)
 
   if alternateVerb != "":
-
     discard curl.easy_setopt(OPT_CUSTOMREQUEST, alternateVerb)
   else:
     discard curl.easy_setopt(OPT_HTTPPOST, 1)
@@ -489,8 +480,7 @@ proc payInvoice*(paymentRequest : string, amp = false, amt : uint64 = 0) : JsonN
   result["amp"] = %* amp
 
 
-proc makeChannel*(pubKey : string, localFundingAmtSat : uint, closeAddress : string = "", 
-                  memo : string = "", pushSat : uint64 = 0, targetConf = 6) : JsonNode =
+proc makeChannelRequest*(pubKey : string, localFundingAmtSat : uint, closeAddress : string = "", private = false, memo : string = "", pushSat : uint64 = 0, targetConf = 6) : JsonNode =
 
   result = newJObject()
   result["node_pubkey_string"] = %* pubKey
@@ -503,8 +493,21 @@ proc makeChannel*(pubKey : string, localFundingAmtSat : uint, closeAddress : str
     result["memo"] = %* memo
 
   result["push_sat"] = %* pushSat
+  result["private"] = %* private
+
+proc addPeer*(pubkey: string, address : string, permanent : bool = true, timeout : uint = 20) : JsonNode =
+
+  result = newJObject()
 
 
+  let lndaddr = %* { 
+     "pubkey": pubKey,
+     "host" : address
+  } 
+
+  result["addr"] = %*  lndaddr 
+  result["perm"] = %* permanent
+  result["timeout"] = %* timeout
 
 #TODO: add hold
 
@@ -519,7 +522,13 @@ proc closeChannel*(force : bool, deliveryAddress : string = "", targetConf : uin
   result["target_conf"]  = %* targetConf
   result["no_wait"] = %* false
 
-proc invoiceTest() =
+proc reverseBase64(a : string) : string =
+  let raw = a.decode().reversed()
+  result = cast[string](raw).toHex().toLowerAscii()
+
+####
+
+proc createInvoice() : Result[MakeInvoiceResult, LndError] =
   var messageBuf : string
   var resultStr : cstring
   let invoice = makeInvoice("this is a test", 5000)
@@ -527,13 +536,10 @@ proc invoiceTest() =
   let curlGet = initCurlPost(invoices, addr messageBuf, $invoice, resultStr)
   echo curlGet.easy_perform()
   free(resultStr)
-  echo messageBuf
+  messageBuf.parseLND(MakeInvoiceResult)
 
-proc reverseBase64(a : string) : string =
-  let raw = a.decode().reversed()
-  result = cast[string](raw).toHex().toLowerAscii()
 
-proc channelTest() : CreateChannelResult = 
+proc openChannel() : Result[CreateChannelResult, LndError] = 
 
   let invoices = "https://localhost:8080/v1/channels"
   var messageBuf : string
@@ -541,31 +547,38 @@ proc channelTest() : CreateChannelResult =
 
 
   let pubkey = "03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5"
-  let thisIsAChannel = makeChannel("03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5", 20000)
+  let thisIsAChannel = makeChannelRequest("03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5", 20000)
 
   let curlGet = initCurlPost(invoices, addr messageBuf, $thisIsAChannel, resultStr)
 
   echo curlGet.easy_perform()
   free(resultStr)
 
-  result = messageBuf.fromJson(CreateChannelResult)
+  result = messageBuf.parseLND(CreateChannelResult)
 
   #The endianness is backwards by defualt out of sheer spite.
-  result.fundingTxStr = reverseBase64 result.fundingTxidBytes
 
-proc makeAndCloseChannel() =
+proc makeAndCloseChannel() : Result[CloseChannelResult, LndError] = 
   var messageBuf : string
   var resultStr : cstring
-  let newChannel = channelTest()
+  let newChannelAtmp = openChannel()
+  let newChannel = 
+    if newChannelAtmp.isErr:
+      echo "Aaa"
+      quit 1
+    else:
+      newChannelAtmp.get() 
+
   echo "do the confirm, manually lol"
   sleep 10000
 
   let close = closeChannel(true)
-  let closePath = &"https://localhost:8080/v1/channels/{newChannel.fundingTxStr}/{newChannel.outputIndex}"
+  let txStr = reverseBase64 newChannel.fundingTxidBytes
+
+  let closePath = &"https://localhost:8080/v1/channels/{txStr}/{newChannel.outputIndex}"
 
   let curlGet = initCurlPost(closePath, addr messageBuf, $close, resultStr, "DELETE")
 
-  echo curlGet.easy_setopt(OPT_CUSTOMREQUEST, "DELETE")
 
   echo curlGet.easy_perform()
   echo "exited"
@@ -573,25 +586,77 @@ proc makeAndCloseChannel() =
   echo " print"
 
   let responseJson = parseJson(messageBuf)["result"]["close_pending"]
-  var result = ($responseJson).fromJson(CloseChannelResult)
-  result.txidStr = reverseBase64 result.txid 
-  echo result
+  result = ($responseJson).parseLND(CloseChannelResult)
   print result
 
-proc payTest() =
+proc payTest() : Result[PayInvoiceResult, LndError] =
 
   var messageBuf : string
   var resultStr : cstring
   let url = "https://localhost:8080/v2/router/send"
 
-  let payReq = "lnbcrt50u1p5vzstwpp5qmfjs37hmuq8gkavmkkaxyd8r8trx5azgm3geycadkjw0yu7qcrqdqqcqzzsxqyz5vqsp5mavs959sq5wzsuy8pgzqqkzgwjmeck63zj9f7lvzzrslcdzqe4as9qxpqysgqtwhg35rh2jkcpsy6fly3536je87pk8zh9wlfp3vcj7ncysf8wkgrmuegegqnjm2qngmvyzvez3ygpqm8xzxjy4k8r4musrmjc9ar49cqqnnhfc"
+  let payReq = "lnbcrt60u1p5vympupp59sk09gpwqd9pkwechregpjt992sd3n7qr28sunl0fe8ypz5xk9cqdqqcqzzsxqyz5vqsp5zy73xujyw4ganp6aaptzuvm8g84g8fpcxj4pt788s6exvehcd0rq9qxpqysgqhhhms3fvv9u3s5x2zgx58vdc4rlkeul5k9vhrqcp9v6zaeskpgc3pphtxrh2gw7379wzsecmq5l2x3mmjv7e83hh4hmn3nlpa0g3dsgpn5k3ze"
 
-  let toPay = payInvoice(payReq)
+  let toPay = payInvoice(payReq, amt=5000)
 
   let curlGet = initCurlPost(url, addr messageBuf, $toPay, resultStr)
 
   echo curlGet.easy_perform()
   free(resultStr)
-  echo messageBuf
+  ($(parseJson(messageBuf)["result"])).parseLND(PayInvoiceResult)
+
+proc connectToPeer() : Result[ConnectionResult, LndError] =  
+  var messageBuf : string
+  var resultStr : cstring
+  let url = "https://localhost:8080/v1/peers"
+
+  let pubkey = "03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5"
+  let ip = "127.0.0.1:9736"
+  let ep = addPeer(pubkey, ip)
+
+  let curlGet = initCurlPost(url, addr messageBuf, $ep, resultStr)
+  echo curlGet.easy_perform()
+  free(resultStr)
+  result = messageBuf.parseLND(ConnectionResult)
 
 
+proc disconnectPeer() : Result[ConnectionResult, LndError] =
+  var messageBuf : string
+  var resultStr : cstring
+
+  let pubkey = "03f23d05bcb3bc73b08dea0d98c56f9bfe2d6a83b7239aa4a380a68433c30097d5"
+  let url = &"https://localhost:8080/v1/peers/{pubkey}"
+
+  let curlGet = initCurlPost(url, addr messageBuf, "", resultStr, "DELETE")
+  echo curlGet.easy_perform()
+  free(resultStr)
+  result = messageBuf.parseLND(ConnectionResult)
+
+proc getInvoice()  = 
+  var messageBuf : string
+
+  let invoice = "lnbcrt60u1p5vyaz4pp54k0s55tnac23y0a5wrvxf4l8796secg8hyntur4njfrn09xuvsfqdqqcqzzsxqyz5vqsp5e4u2rgmh7glhh6va0eg4p27glr86uhksewr6rl0p90gtqq7aqzuq9qxpqysgqv9q48tjl42248292s924de4c0qtaapm8xnuas29x6ryg49faewfzqupjsfakfwuzwjccaq0mtt66u33n0aguk2q465lgkmjq8u4xtvgqdp7xdj"
+  # let encoded = encodeQuery(@[("r_hash=", invoice)])
+  # echo encoded
+  let url = &"https://localhost:8080/v1/payreq/{invoice}"
+
+  echo url
+  let curlGet = initCurlGet(url, addr messageBuf)
+  echo curlGet.easy_perform()
+
+  echo parseLND(messageBuf, parseInvoiceData)
+
+
+proc makeNewAddress() : Result[NewLndAddress, LndError] =
+  var messageBuf : string
+
+  # bech32
+  let url = &"https://localhost:8080/v1/newaddress?type=0"
+  let curlGet = initCurlGet(url, addr messageBuf)
+  echo curlGet.easy_perform()
+  echo messageBuf.parseLND(NewLndAddress)
+
+  result = messageBuf.parseLND(NewLndAddress)
+
+when isMainModule:
+  echo makeNewAddress()
