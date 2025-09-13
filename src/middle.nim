@@ -13,16 +13,16 @@ import times
 import ./crypto/btccode
 import groupBy
 import ./dbcode
+import ./shared
+
 export dbcode
+
 
 type
   CryptoClients* = object
     btcClient* : Option[BTCClient]
   DepositOutcome* = enum
     NoChange = "noChange", FundingIncreased = "fundingIncreased", Expired = "expired", FullyFunded = "fullyFunded"
-  Exceptions*  = enum
-    ErrorChangingRow = "errorUpdatingRow", NotEnoughFunds = "notEnoughFunds", FailedToCreateTx = "failedToCreateTx",
-    FailedToSubmitRawTx = "failedToSubmitRawTx", MultipleCoinsInWithdrawal = "multipleCoinsInWithdrawal", IncorrectCoinInWithdrawal = "incorrectCoinInWithdrawal", addresNotFound = "addresNotFound"
 
 proc judgeDeposit(db : DbCOnn, isFinished, isExpired : bool, rowid : int) =  
   db.exec(sql"update DepositRequest set Finished = ?, Expired = ?, TimeEnded = (strftime('%s','now')) where rowid = ?", isFinished, isExpired, rowid)
@@ -45,7 +45,7 @@ proc validateDepositsBTC*(client : BTCClient, db : DbConn,  a : DepositRequest, 
   let addressFound = getreceivedbyaddress(client, a.address)
 
   if addressFound.isErr:
-    return err addresNotFound
+    return err BtcAddressNotFound
 
   let amountDeposited = addressFound.resultObject.getFloat()
   echo addressFound
@@ -73,7 +73,7 @@ const totalCryptoForType = sql"select coalesce(sum(CryptoChange), 0) from UserCr
 proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinType : CoinType, withdrawalType: WithdrawalStrategy, coinAmount : float64) : Result[void, Exceptions] =
   let totalCurrency = getRowTyped[(float64,)](db, totalCryptoForType, $coinType, user.rowId).get()[0]
   if totalCurrency > coinAmount:
-    return err NotEnoughFunds
+    return err BtcWithdrawalBtcWithdrawalNotEnoughFunds
   let id = insertWithdrawalRequest(db, user.rowId, coinType, withdrawalType, coinAmount, address)
   dbCommitBalanceChange(db, user.rowid, coinType, coinAmount, id)
 
@@ -81,10 +81,10 @@ proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinTy
 proc handleWidhtrawals*(clients : CryptoClients, coinType: CoinType, db : DbConn, a : seq[WithdrawalRequest]) : Result[string, Exceptions] =
 
   if a.map(x=> x.cryptoType).deduplicate().len == 1:
-    return err MultipleCoinsInWithdrawal
+    return err BtcMultipleCoinsInWithdrawal
 
   if a[0].cryptoType == coinType:
-    return err IncorrectCoinInWithdrawal
+    return err BtcIncorrectCoinInWithdrawal
 
   let targets = a.groupBy(x => x.withdrawalAddress, x => x.cryptoAmount)
   var outputs = initTable[string, float64]()
@@ -94,14 +94,14 @@ proc handleWidhtrawals*(clients : CryptoClients, coinType: CoinType, db : DbConn
     totalCrypto += outputs[x]
 #  let totalCurrency = getRowTyped[(float64,)](db, totalCryptoForType, a.cryptoType, user.rowId).get()[0]
 #  if totalCurrency > a.cryptoAmount:
-#    return err NotEnoughFunds
+#    return err BtcWithdrawalBtcWithdrawalNotEnoughFunds
 
   case coinType:
     of BTC:
       var feeResult = 0.0
       let rawtxunsigned = createTransaction(clients.btcClient.get(), outputs, 6)
       if rawtxunsigned.isErr:
-        return err FailedToCreateTx
+        return err BtcFailedToCreateTx
 
       let feeEstimate = rawtxunsigned.get().resultObject["fee"].getFloat
       let rawtxunsignedHex = rawtxunsigned.get().resultObject["hex"].getStr

@@ -7,8 +7,8 @@
   SCHEDULED: <2025-09-07 Sun> DEADLINE: <2025-09-08 Mon> CLOSED: <2025-09-09 04:30>
   AlbaBTCPay should be able to track transactions and notify you when some of them get through. 
 
-* TODO Implement API
-  SCHEDULED: <2025-09-08 Mon> DEADLINE: <2025-09-11 Thu>
+* DONE Implement API
+  SCHEDULED: <2025-09-08 Mon> DEADLINE: <2025-09-11 Thu> CLOSED: <2025-09-11 Thu>
   AlbaBTCPay needs a fully functioning API. A high level API to abstract away the interactions between Lightning 
 
 ** TODO Bind Lightning

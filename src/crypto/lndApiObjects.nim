@@ -1,15 +1,20 @@
 import json
+import tables
+import base64
+import algorithm
 import strutils
 import jsony
 import results
+import ../shared
+import libcurl
 
 type
-  MakeInvoiceResult* = object
+  LndAddInvoiceResult* = object
     rHash : string
     paymentRequest* : string
     addIndex* : string
     paymentAddr* : string 
-  CreateChannelResult* = object
+  LndAddChannelResult* = object
     fundingTxidBytes* : string
     fundingTxStr* : string
     outputIndex* : int
@@ -19,14 +24,15 @@ type
     outputIndex* : int
     feePerVByte : string
     localCloseTx : bool
-  LndError* = object
-    code : int
-    message : int
-    details : JsonNode
+  LndError* = object of AlbaBTCException
+    code* : int
+    message* : string
+    details* : JsonNode
+    libcurlError* : Code
 
-  ConnectionResult* = object
+  LndConnectionResult* = object
     status* : string
-  PayInvoiceResult* = object
+  LndPayInvoiceResult* = object
     paymentHash* : string
     value* : string
     creationDate* : string
@@ -43,10 +49,8 @@ type
     paymentIndex* : string
     failureReason* : string
     firstHopCustomRecords* : JsonNode
-
   InvoiceState* = enum
     Open = "OPEN", Closed = "CLOSED"
-
   HLTC* = object
     chanId : string
     amountMSat : int
@@ -55,9 +59,8 @@ type
     acceptTime : int
     expiryTime : int
     state : InvoiceState
-
   # To get the correct types
-  InvoiceDataIner = object
+  LndInvoiceDataIner = object
     numSatoshis : string
     timestamp : string
     expiry : string
@@ -72,8 +75,7 @@ type
     routeHints : JsonNode
     features : JsonNode
     blindedPaths : JsonNode
-
-  InvoiceData* = object
+  LndInvoiceData* = object
     numSatoshis* : uint
     timestamp* : uint
     expiry* : uint
@@ -91,13 +93,54 @@ type
     features* : JsonNode
     blindedPaths* : JsonNode
 
-  NewLndAddress* = object
+  OpenChannel* = object
+    active* : bool
+    remotePubkey* : string
+    channelPoint* : string
+    chanId* : string
+    capacity* : string
+    localBalance* : string
+    remoteBalance* : string
+    commitFee* : string
+    commitWeight* : string
+    feePerKw* : string
+    unsettledBalance* : string
+    totalSatoshisSent* : string
+    totalSatoshisReceived* : string
+    numUpdates* : string
+    pendingHtlcs* : seq[HLTC]            # original was []
+    csvDelay* : int                  # original was 144 (number)
+    private* : bool
+    initiator* : bool
+    chanStatusFlags* : string
+    localChanReserveSat* : string
+    remoteChanReserveSat* : string
+    staticRemoteKey* : bool
+    commitmentType* : string
+    lifetime* : string
+    uptime* : string
+    closeAddress* : string
+    pushAmountSat* : string
+    thawHeight* : int                # original was 0 (number)
+    zeroConf* : bool
+    zeroConfConfirmedScid* : string
+    peerAlias* : string
+    peerScidAlias* : string
+    memo* : string
+    customChannelData* : string
+  ChannelsQuery* = enum
+    ActiveOnly, InactiveOnly, Both
+  LndNewAddress* = object
     address : string
 
 proc parseString(a : string, b : var SomeUnsignedInt) = 
   b = parseUInt(a)
 proc parseString(a : string, b : var SomeSignedInt) = 
   b = parseInt(a)
+
+proc reverseBase64*(a : string) : string =
+  let raw = a.decode().reversed()
+  result = cast[string](raw).toHex().toLowerAscii()
 
 proc copyCorrectTypes*[A;B](a : A, b :var B) = 
   for x, y in fieldPairs(a):
@@ -108,9 +151,14 @@ proc copyCorrectTypes*[A;B](a : A, b :var B) =
         else:
           y1 = y
   
-proc parseInvoiceData*(a : string) : InvoiceData = 
-  let parsed = a.fromJson(InvoiceDataIner)
+proc parseLNDInvoiceData*(a : string) : LndInvoiceData = 
+  let parsed = a.fromJson(LndInvoiceDataIner)
   copyCorrectTypes(parsed, result)
+
+proc parseOpenChannel*(a : string) : LndAddChannelResult =
+
+  result = a.fromJson(LndAddChannelResult)
+  result.fundingTxStr = reverseBase64(result.fundingTxidBytes)
 
 const errKeys = @["code", "message", "details"]
 
@@ -144,3 +192,8 @@ proc parseLND*[A](str : string, parse : proc(a: string) : A) : Result[A,LndError
 
   return ok parse(str)
 
+proc parseLNDChannelsList*(a : string) : seq[OpenChannel] = 
+  # I feel like this is a clever solution
+  let inter = a.fromJson(Table[string, seq[OpenChannel]])
+  result = inter["channels"]
+  
