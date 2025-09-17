@@ -153,12 +153,10 @@ type
     jsonBuffer : string
   SubscribeState = enum
     Poll, Reconfigure
-  CurlError* = object of AlbaBTCException
-    code : Code
 #template mcodeToLndError(a : Mcode) =
 template handleCurl(a : Code)  =
-  if a != E_OK:
-    return err LndError(libcurlError : a)
+  if a != E_OK and a != E_WRITE_ERROR:
+    return err libCurlError(a)
 
 proc initPeerEvent(a : string) : PeerEvent = 
   var parsed = (fromJson a)["result"]
@@ -255,9 +253,10 @@ proc normalCurlRead(buffer: cstring, size: int, count: int, outstream: pointer):
   let outstream = cast[ptr string](outstream)
   let stringy = $buffer
   outstream[] = outstream[] & stringy
-  echo outstream[]  
+  #echo outstream[]  
 
   if stringy[^3 .. ^1]  == "\n\r\n":
+    outstream[] = outstream[].split("\n")[0]
     return 0
 
   return size * count
@@ -437,7 +436,7 @@ let lndUrl = createShared(string, sizeof(string))
 proc setLNDUrl*(a : string) = 
   lndUrl[] = a
 
-proc makeInvoice*(memo : string, amtSat : int64, validDuration : int64 = 0, isAmp : bool = true) : JsonNode =
+proc makeInvoice*(memo : string, amtSat : uint64, validDuration : int64 = 0, isAmp : bool = true) : JsonNode =
   result = newJObject()
   result["memo"] = %* memo
   result["value"] = %* amtSat
@@ -496,7 +495,7 @@ proc closeChannel*(force : bool, deliveryAddress : string = "", targetConf : uin
   result["no_wait"] = %* false
 
 
-proc lndAddInvoice*(memo : string, amtSat : int64, validDuration : int64 = 0, isAmp : bool = true) : Result[LndAddInvoiceResult, LNDError] =
+proc lndAddInvoice*(memo : string, amtSat : uint64, validDuration = 0, isAmp : bool = false) : Result[LndAddInvoiceResult, AlbaBTCException] =
   var messageBuf : string
   var resultStr : cstring
   let invoice = makeInvoice(memo, amtSat, validDuration, isAmp)
@@ -508,7 +507,7 @@ proc lndAddInvoice*(memo : string, amtSat : int64, validDuration : int64 = 0, is
   return messageBuf.parseLND(LndAddInvoiceResult)
 
 
-proc lndOpenChannel*(pubKey : string, localFundingAmtSat : uint, closeAddress : string = "", private = false, memo : string = "", pushSat : uint64 = 0, targetConf = 6) : Result[LndAddChannelResult, LNDError] = 
+proc lndOpenChannel*(pubKey : string, localFundingAmtSat : uint, closeAddress : string = "", private = false, memo : string = "", pushSat : uint64 = 0, targetConf = 6) : Result[LndAddChannelResult, AlbaBTCException] = 
 
   let channelEndpoint = &"{lndUrl[]}/v1/channels"
   var messageBuf : string
@@ -525,7 +524,7 @@ proc lndOpenChannel*(pubKey : string, localFundingAmtSat : uint, closeAddress : 
   messageBuf.parseLND(parseOpenChannel)
   #The endianness is backwards by defualt out of sheer spite.
 
-proc lndCloseChannel(txStr : string, outputIndex : int, deliveryAddress : string = "", targetConf : uint = 6, force = false) : Result[CloseChannelResult, LNDError] = 
+proc lndCloseChannel*(txStr : string, outputIndex : int, deliveryAddress : string = "", targetConf : uint = 6, force = false) : Result[CloseChannelResult, AlbaBTCException] = 
   var messageBuf : string
   var resultStr : cstring
   let closePath = &"{lndUrl[]}/v1/channels/{txStr}/{outputIndex}"
@@ -540,13 +539,11 @@ proc lndCloseChannel(txStr : string, outputIndex : int, deliveryAddress : string
   let responseJson = parseJson(messageBuf)["result"]["close_pending"]
   result = ($responseJson).parseLND(CloseChannelResult)
 
-proc lndPayInvoiceImp*(payReq : string, amt : uint64 = 0, amp = false) : Result[LndPayInvoiceResult, LNDError] =
+proc lndPayInvoiceImp*(payReq : string, amt : uint64 = 0, amp = false) : Result[LndPayInvoiceResult, AlbaBTCException] =
 
   var messageBuf : string
   var resultStr : cstring
   let url = &"{lndUrl[]}/v2/router/send"
-
-  let payReq = "lnbcrt60u1p5vympupp59sk09gpwqd9pkwechregpjt992sd3n7qr28sunl0fe8ypz5xk9cqdqqcqzzsxqyz5vqsp5zy73xujyw4ganp6aaptzuvm8g84g8fpcxj4pt788s6exvehcd0rq9qxpqysgqhhhms3fvv9u3s5x2zgx58vdc4rlkeul5k9vhrqcp9v6zaeskpgc3pphtxrh2gw7379wzsecmq5l2x3mmjv7e83hh4hmn3nlpa0g3dsgpn5k3ze"
 
   let toPay = payInvoice(payReq, amp, amt)
 
@@ -556,9 +553,14 @@ proc lndPayInvoiceImp*(payReq : string, amt : uint64 = 0, amp = false) : Result[
   free(resultStr)
   handleCurl curlResult
 
-  ($(parseJson(messageBuf)["result"])).parseLND(LndPayInvoiceResult)
+  let resultInter = lndIsErr messagebuf
+  if resultInter.isErr:
+    return err resultInter.error()
 
-proc lndConnectPeer*(pubkey, ip : string) : Result[LndConnectionResult, LNDError] =  
+  return ok ($(resultInter.get()["result"])).parseLNDPaymentInvoice()
+  
+
+proc lndConnectPeer*(pubkey, ip : string) : Result[LndConnectionResult, AlbaBTCException] =  
   var messageBuf : string
   var resultStr : cstring
   let url = &"{lndUrl[]}/v1/peers"
@@ -571,7 +573,7 @@ proc lndConnectPeer*(pubkey, ip : string) : Result[LndConnectionResult, LNDError
   result = messageBuf.parseLND(LndConnectionResult)
 
 
-proc lndDisconnectPeer*(pubkey : string) : Result[LndConnectionResult, LNDError] =
+proc lndDisconnectPeer*(pubkey : string) : Result[LndConnectionResult, AlbaBTCException] =
   var messageBuf : string
   var resultStr : cstring
 
@@ -583,7 +585,7 @@ proc lndDisconnectPeer*(pubkey : string) : Result[LndConnectionResult, LNDError]
   handleCurl curlResult
   result = messageBuf.parseLND(LndConnectionResult)
 
-proc lndGetInvoiceInfo*(invoice : string) : Result[LndInvoiceData, LNDError] = 
+proc lndGetInvoiceInfo*(invoice : string) : Result[LndInvoiceData, AlbaBTCException] = 
   var messageBuf : string
 
   # let encoded = encodeQuery(@[("r_hash=", invoice)])
@@ -597,7 +599,7 @@ proc lndGetInvoiceInfo*(invoice : string) : Result[LndInvoiceData, LNDError] =
   
   result =  messageBuf.parseLND(parseLNDInvoiceData)
 
-proc lndNewAddress() : Result[LndNewAddress, LNDError] =
+proc lndNewAddress() : Result[LndNewAddress, AlbaBTCException] =
   var messageBuf : string
 
   # bech32
@@ -606,6 +608,27 @@ proc lndNewAddress() : Result[LndNewAddress, LNDError] =
   let curlResult = curlGet.easy_perform()
   handleCurl curlResult
   return messageBuf.parseLND(LndNewAddress)
+
+proc lndListPayments() : seq[LndPayInvoiceResult] =
+  var messageBuf : string
+
+  let url = &"{lndUrl[]}/v1/payments"
+  let curlGet = initCurlGet(url, addr messageBuf)
+  let curlResult = curlGet.easy_perform()
+  # when i do it the normal way theres an issue sorry future me.
+
+  echo messageBuf
+  let inter = ($(messageBuf.parseJson()["payments"])).fromJson(seq[lndPayInvoiceImter])
+
+
+  for x in inter:
+    var def = default(LndPayInvoiceResult)
+    copyCorrectTypes(x, def)
+    result.add(def)
+  # echo messageBuf.parseLND(LndNewAddress)
+  # result = messageBuf.parseLND(LndNewAddress)
+
+
 
 
 proc lndGetChannelBalance*() =
@@ -618,7 +641,7 @@ proc lndGetChannelBalance*() =
   # echo messageBuf.parseLND(LndNewAddress)
   # result = messageBuf.parseLND(LndNewAddress)
 
-proc lndListChannels*(mode : ChannelsQuery = ActiveOnly) : Result[seq[OpenChannel], LNDError] =
+proc lndListChannels*(mode : ChannelsQuery = ActiveOnly) : Result[seq[OpenChannel], AlbaBTCException] =
   
   let url = 
     case mode
@@ -639,10 +662,13 @@ proc lndListChannels*(mode : ChannelsQuery = ActiveOnly) : Result[seq[OpenChanne
 
 
 when isMainModule:
-  discard
   setLNDUrl("https://localhost:8080")
-  echo lndAddInvoice("!!", 5000)
-  #lndListChannels()
+  # echo "PAY INVOICE
+  # let paid = lndPayInvoiceImp("lnbcrt50u1p5v33azpp58nav0fwgwtdtm2368ests740l5nxtsycw95t99qet8cl36arp7asdqqcqzzsxqyz5vqsp5s9a42mlysm7kyflrjf2akqvrjxcc3vwkalql72zqg9z8e6zyslms9qxpqysgqqsd0xzwh2v6r7e9ym9axulr906adjm9c9et8rgg42ehdytzvpkwqrcw2h2r6erawk9tqzmdr3q8qwpu0m6atqzm3rmfegt74w8madtcqntsvnf").get()
+  # print paid
+  echo lndListPayments()
+#lndListChannels()
+
   #echo lndOpenChannel()
   #lndGetChannelBalance()
   # echo lndConnectPeer()

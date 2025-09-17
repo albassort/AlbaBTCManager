@@ -1,4 +1,5 @@
 import db_connector/db_sqlite
+import json
 import std/parseutils
 import sequtils
 import strutils
@@ -7,6 +8,13 @@ import std/options
 import std/uri
 import tables
 import Json
+import typetraits
+import ./shared
+
+##TODO MAKE A BETTER ORM
+type CanConvert = concept x 
+  $x is string
+
 
 proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
 
@@ -34,7 +42,7 @@ proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
       of "t":
         true
       else:
-        b = parseBool(a)
+        parseBool(a)
   elif b is float:
     b = parseFloat(a)
   elif b is Option:
@@ -47,8 +55,8 @@ proc assignFromString[T](a : string, b : var T) {.gcsafe.}  =
       b = some(dereference)
   elif b is JsonNode:
     b = parseJson(a)
-  else:
-    {.error: "Type not supported".}
+  elif b is CoinType:
+    b = parseEnum[CoinType](a)
 
 proc convertRow[T](row: Row) : Option[T] {.gcsafe.}  =
   # Internal, attempts to convert a row to the given type

@@ -13,7 +13,7 @@ CREATE TABLE UserCryptoChange (
     UserRowId Integer references Users (RowId) not null,
 
     CoinType text not null,  
-    CryptoChange decimal not null,
+    CryptoChange REAL not null,
 
     WithdrawalRowId Integer references UserDepositEvent (RowId),
     DepositRowId Integer references UserWithdrawalEvent (RowId),
@@ -28,7 +28,7 @@ CREATE TABLE DepositRequest (
 
     PayToUser Integer references Users (RowId),
 
-    DepositAmount decimal not null,
+    DepositAmount REAL not null,
 
     Finished boolean not null default false,
     Expired boolean not null default false,
@@ -42,7 +42,7 @@ CREATE TABLE DepositRequest (
 -- drop table DepositEvent;
 CREATE TABLE DepositEvent(
     DepositRequest Integer references DepositRequest (RowId) not null,
-    AmountReceived decimal not null,
+    AmountReceived REAL not null,
     TimeReceived time NOT NULL DEFAULT (strftime('%s','now'))
 );
 
@@ -50,10 +50,10 @@ CREATE TABLE DepositEvent(
 CREATE TABLE TransactionData (
     Time time NOT NULL DEFAULT (strftime('%s','now')),
 
-    Fee decimal not null,
+    Fee REAL not null,
 
-    OutputTotal decimal not null,
-    NumberOfOutputs decimal not null,
+    OutputTotal REAL not null,
+    NumberOfOutputs REAL not null,
 
     --Json Data
     TransactionRaw json not null,
@@ -76,7 +76,7 @@ create table WithdrawalRequest(
   userRowId int,
   timeReceived time NOT NULL DEFAULT (strftime('%s','now')),
   cryptoType varchar(12) not null,
-  cryptoAmount decimal not null,
+  cryptoAmount REAL not null,
   withdrawalStrategy varchar(24) not null,
   withdrawalAddress varchar(256) not null,
   timeComplete time,
@@ -92,6 +92,59 @@ create table TransactionWatch(
   CoinType text not null,
   Notified bool not null default false,
   NotFound bool not null default false
+);
+
+
+create table LndInvoiceAdd(
+  NumSatoshi int not null,
+  BtcAmount REAL generated always as (NumSatoshi / 100000000.0) STORED,
+  Invoice text not null,
+  Rhash text not null,
+  TimeCreated time NOT NULL DEFAULT (strftime('%s','now')),
+  PubKeyPaid string,
+  TimePaid time,
+  callback text
+);
+
+create table LndInvoicePaid(
+  NumSatoshi int not null,
+  BtcAmount REAL generated always as (NumSatoshi /100000000.0) STORED,
+  Invoice text not null,
+  Rhash text not null,
+  TimeMade time NOT NULL DEFAULT (strftime('%s','now')),
+  TimePaid time,
+  PubKeyPaid string,
+  PaymentAddr string,
+  PubKey string,
+  callback text
+);
+
+create table LndChannelOpened(
+  FundingTxId string primary key not null, 
+  OutputIndex int not null,
+  LclNumSatoshi int not null,
+  LclBtcAmount REAL generated always as (LclBtcAmount /100000000.0) STORED,
+  PushNumSatoshi int not null,
+  PushBtcAmount REAL generated always as (PushBtcAmount /100000000.0) STORED,
+  Pubkey string not null,
+  TimeClosed time 
+);
+
+
+
+create table LndChannelClose(
+  ChannelId string primary key not null,
+  -- Called channelpoint
+  FundingTxId string not null,
+  NumSatoshiSent int not null,
+  NumBtcSent REAL generated always as (NumBtcSent /100000000.0) STORED,
+  NumSatoshiReceived int not null,
+  NumBtciReceived REAL generated always as (NumSatoshiReceived /100000000.0) STORED,
+  Initialted bool,
+  Pubkey string not null,
+  CloseType string,
+  Closer string,
+  ClosedTime time NOT NULL DEFAULT (strftime('%s','now')),
 );
 
 

@@ -49,8 +49,8 @@ proc spawnTestSocket() =
     var address = ""
     var client = newSocket()
     socket.acceptAddr(client, address)
-    let recieved = recvTCP(client)
-    echo recieved
+    let received = recvTCP(client)
+    echo received
     client.sendTCP("Hello!!!")
 
 proc sendRecvTest() = 

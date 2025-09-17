@@ -1,6 +1,7 @@
 import yaml
 import os
 import tables
+import ./shared
 import ./config
 import db_connector/db_sqlite
 import strutils

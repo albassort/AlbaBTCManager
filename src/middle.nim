@@ -19,8 +19,6 @@ export dbcode
 
 
 type
-  CryptoClients* = object
-    btcClient* : Option[BTCClient]
   DepositOutcome* = enum
     NoChange = "noChange", FundingIncreased = "fundingIncreased", Expired = "expired", FullyFunded = "fullyFunded"
 
@@ -73,7 +71,7 @@ const totalCryptoForType = sql"select coalesce(sum(CryptoChange), 0) from UserCr
 proc createWithdrawalRequest*(db : DbConn, user : User, address : string, coinType : CoinType, withdrawalType: WithdrawalStrategy, coinAmount : float64) : Result[void, Exceptions] =
   let totalCurrency = getRowTyped[(float64,)](db, totalCryptoForType, $coinType, user.rowId).get()[0]
   if totalCurrency > coinAmount:
-    return err BtcWithdrawalBtcWithdrawalNotEnoughFunds
+    return err BtcWithdrawalNotEnoughFunds
   let id = insertWithdrawalRequest(db, user.rowId, coinType, withdrawalType, coinAmount, address)
   dbCommitBalanceChange(db, user.rowid, coinType, coinAmount, id)
 

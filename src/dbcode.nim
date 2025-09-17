@@ -9,12 +9,11 @@ import sequtils
 import sugar
 import groupBy
 import strutils
+import ./shared
 type 
 
   WithdrawalStrategy* = enum
     Group = "group", Single = "single"
-  CoinType* = enum
-    BTC = "BTC"
   User* = object
     rowId* : int
     userName* : string
@@ -26,7 +25,7 @@ type
     rowId* : int
     userRowId* : Option[int]
     validLogin* : bool
-    timeRecieved* : Time
+    timeReceived* : Time
     RequestBody* : JsonNode
   UserCryptoChange* = object
     rowId* : int
@@ -53,8 +52,8 @@ type
   DepositEvent* = object
     rowId* : int
     DepositRequest* : int
-    AmounntRecieved* : float64
-    timeRecieved* : float64
+    AmounntReceived* : float64
+    timeReceived* : float64
   TransactionData* = object
     rowId* : int
     time* : Time
@@ -66,7 +65,7 @@ type
   WithdrawalRequest* = object
     rowId* : int
     userRowId* : int64
-    timeRecieved* : Time 
+    timeReceived* : Time 
     cryptoType* : CoinType
     cryptoAmount* : float64
     withdrawalStrategy* : WithdrawalStrategy
