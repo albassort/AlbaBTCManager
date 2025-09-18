@@ -28,7 +28,7 @@ proc scheduledTasks() =
     echo "do thing!"
   
     var outputs = initTable[string, float]()
-    let newAddress = newDepositRequest(db, clients, BTC, 0.0001).get()
+    let newAddress = createDepositRequest(db, clients, BTC, 0.0001).get()
     outputs[newAddress] = 0.001
 
     echo sendBTC(clients.btcClient.get(), outputs, 6, globalConfig[].btcConfig.walletPassword)
@@ -68,7 +68,7 @@ when isMainModule:
   let clients = initCryptoClients()
 
   var outputs = initTable[string, float]()
-  let newAddress = newDepositRequest(db, clients, BTC, 0.0001).get()
+  let newAddress = createDepositRequest(db, clients, BTC, 0.0001).get()
   outputs[newAddress] = 0.001
 
   let tx = sendBTC(clients.btcClient.get(), outputs, 6, globalConfig[].btcConfig.walletPassword).get()

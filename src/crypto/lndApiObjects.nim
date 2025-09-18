@@ -176,7 +176,9 @@ type
     memo* : string
     customChannelData* : string
   ChannelsQuery* = enum
-    ActiveOnly, InactiveOnly, Both
+    ActiveOnly = "ActiveOnly", 
+    InactiveOnly = "InactiveOnly", 
+    Both = "Both"
   LndNewAddress* = object
     address : string
 

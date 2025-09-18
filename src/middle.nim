@@ -155,10 +155,9 @@ proc monitorTxId*(clients : CryptoClients, db : DbConn, txid : string, confTarge
   echo callback
 
 
-proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CoinType, depositAmount : float, userRowId : int = 1) : Option[string] {.gcsafe.} =
+proc createDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CoinType, depositAmount : float, expiryLength : uint64,  userRowId : int = 1, callback = newJNull()) : Option[string] {.gcsafe.} =
   case cryptoType:
     of BTC:
-      #TODO: check if some; send out notif if not and enabled
       let client = clients.btcClient.get()
       let newAddress = getNewAddress(client, "", BECH32)
       if not newAddress.hasResult:
@@ -166,7 +165,7 @@ proc newDepositRequest*(db : DbConn, clients : CryptoClients, cryptoType: CoinTy
         return 
       let address = newAddress.resultObject.getStr()
 
-      discard createNewDepositRequest(db, address, BTC, 7200, depositAmount, userRowId)
+      discard createNewDepositRequest(db, address, BTC, expiryLength, depositAmount, userRowId)
       return some address
 
 

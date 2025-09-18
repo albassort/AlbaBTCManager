@@ -93,9 +93,9 @@ proc dbCommitBalanceChange*(db : DbConn, userRowId : int, cryptoType : CoinType,
   db.exec(sql"insert into UserCryptoChange(UserRowId, CoinType, CryptoChange, DepositRowId, WithdrawalRowId) values (?, ?, ?, NULLIF(?, -1), NULLIF(?, -1))",
     userRowId, $cryptoType, amount, depositRequestRowId, withdarawalRequestRowId)
   
-proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CoinType, withdrawalExpireTime : int, depositAmount : float, userRowId = 1) : int = 
+proc createNewDepositRequest*(db : DbConn, address : string, cryptoType : CoinType, withdrawalExpireTime : uint64, depositAmount : float, userRowId = 1, callback = newJNull()) : int = 
 
-  let insert = sql"""insert into DepositRequest(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount) values (?, ?, ?, ?, ?)"""
+  let insert = sql"""insert into DepositRequest(ReceivingAddress, CoinType, ValidLengthSeconds, PayToUser, DepositAmount, Callback) values (?, ?, ?, ?, ?, NULLIF(?, "null"))"""
   return db.insertId(insert, address, $cryptoType, withdrawalExpireTime, userRowId, depositAmount)
   discard ""
   #discard getNewAddress
@@ -120,7 +120,13 @@ proc insertTxWatch*(db : DbConn, txId : string, blockHeightCreated, confTarget :
   values (?, ?,?, NULLIF(?, 'null'),?)"""
   return db.insertId(insert, txId, blockHeightCreated, confTarget, $callBack,  cryptoType)
   
+proc userExists*(db : DbConn, userRowId : int) : bool = 
+  let row = db.getRow(sql"select * from Users where rowId = ?", userRowId)
 
+  if row[0] != "": return true
+   
+proc getUser*(db : DbConn, userRowId : uint64) : Option[User] = 
 
+  getRowTyped[User](db, sql"select rowid, * from users where userRowid =?", userRowId)
 
 #   db.exec(sql"insert into WithdrawalRequest(CoinType, CryptoAmount,  WithdrawalStrategy, WithdrawalAddress, PayToUser) VALUES (?,?,?,?,?)", userRowId, $cryptoType, cryptoAmount, $strategy, address)

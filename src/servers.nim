@@ -11,10 +11,18 @@ import std/epoll
 import sugar
 import std/endians
 import middle
+import ./shared
+import jsony
 
 type BiChannel = object
   fromClient* : ptr Channel[RPCRequest]
-  toClient* : ptr Channel[JsonNode]
+  toClient* : ptr Channel[RPCResponse]
+
+proc newRPCRequest(a : Sources, id : float, body : JsonNode) : RPCRequest =
+  result.source = a 
+  result.id = id
+  result.body = body
+  result.timeRecieved = now().toTime().toUnix()
 
 proc sendTCP*(socket : Socket, message : string) = 
   let size = message.len
@@ -82,29 +90,29 @@ proc processRequest(request : Request, authKey : string) : Option[JsonNode] =
     request.respond(400, "Empty request body")
     return
 
-  if "Authorization" notin request.headers or "Content-Type" notin request.headers:
-    request.respond(401, "")
-    return
-
-  let contentType = request.headers["Content-Type"]
-
-  if contentType != "application/json":
-    request.respond(400, "")
-    return 
-
-  let auth = request.headers["Authorization"]
-  let parts = auth.split(" ")
-
-  if parts[0] != "Basic": 
-    request.respond(401, "")
-    return 
-
-  let givenCredentials = parts[1]
-
-  if authKey != givenCredentials:
-    request.respond(401, "")
-    return
-    
+  # if "Authorization" notin request.headers or "Content-Type" notin request.headers:
+  #   request.respond(401, "")
+  #   return
+  #
+  # let contentType = request.headers["Content-Type"]
+  #
+  # if contentType != "application/json":
+  #   request.respond(400, "")
+  #   return 
+  #
+  # let auth = request.headers["Authorization"]
+  # let parts = auth.split(" ")
+  #
+  # if parts[0] != "Basic": 
+  #   request.respond(401, "")
+  #   return 
+  #
+  # let givenCredentials = parts[1]
+  #
+  # if authKey != givenCredentials:
+  #   request.respond(401, "")
+  #   return
+  #
   try:
     result = some parseJson(request.body)
   except:
@@ -114,7 +122,7 @@ proc processRequest(request : Request, authKey : string) : Option[JsonNode] =
     
 ##  Takes in a channel for the JSON respones and a channel with the response obj
 ##  Paired with its IID in order to know which response to send to who.
-proc handleHttpRequest(a : (ptr Channel[JsonNode], ptr Channel[ptr Request])) =
+proc handleHttpRequest(a : (ptr Channel[RPCResponse], ptr Channel[(ptr Request, float64)])) =
 
   let toClient = a[0]
   let socketChannel = a[1]
@@ -123,33 +131,33 @@ proc handleHttpRequest(a : (ptr Channel[JsonNode], ptr Channel[ptr Request])) =
     let newSocket = socketChannel[].tryRecv()
     if newSocket.dataAvailable:
       echo "ok we've got one!"
-      let socket = newSocket.msg
-      pendingRequest[cpuTime()] = socket
+      let msg = newSocket.msg
+      let socket = msg[0]
+      let id = msg[1]
+      pendingRequest[id] = socket
 
     let request = toClient[].tryRecv()
     if request.dataAvailable:
       echo "ok were responding"
-      let jsonObj = request.msg
-      let iid = jsonObj["iid"].getFloat()
-      let reqeust = pendingRequest[iid]
+      let response = request.msg
+      let reqeust = pendingRequest[response.id]
+      reqeust[].respond(response.response.httpCode, toJson response.response)
 
-      reqeust[].respond(200, $jsonObj)
-      pendingRequest.del(iid)
+      pendingRequest.del(response.id)
       freeShared(reqeust)
 
-    sleep 500
+    seep 50
 
 proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
   let socket = newSocket()
-
 
   let port = a[0]
   let authKey = a[1]
   let channel = a[2]
 
   # Because we don't want to both wait for the reqeusts to have a response, as well as,poll for new requests, we make a thread for that. Where, our reqeust sit and wait for respoonses
-  var t : Thread[(ptr Channel[JsonNode], ptr Channel[ptr Request])]
-  let newChannel = createShared(Channel[ptr Request], sizeof(Channel[ptr Request]))
+  var t : Thread[(ptr Channel[RPCResponse], ptr Channel[(ptr Request,float64)])]
+  let newChannel = createShared(Channel[(ptr Request,  float64)], sizeof(Channel[( ptr Request, float64)]))
 
   createThread(t, handleHttpRequest, (channel.toClient, newChannel))
 
@@ -159,24 +167,31 @@ proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
   socket.bindAddr(port)
   socket.listen()
   while true:
+    echo "req"
     let requestTemp = getRequest(socket)
+    echo "aaa"
     if requestTemp.isNone:
       continue
     let request = requestTemp.get()
     let node = processRequest(request, authKey)
+    echo "hello"
     if node.isNone:
+      #TODO: RESPOND
       continue
-    let json = node.get()
-    let funct = json["func"].getStr()
-    let toSend = requestTemplate(funct, "http", json)
 
+    echo "gust"
+
+    # Assembles the request and sends it out
+    let id = cpuTime()
+    let json = node.get()
+
+    let toSend = newRPCRequest(http, id, json)
     channel.fromClient[].send(toSend)
 
+    # Sneds out the Request to handle closing on a different thread
     let toChannel = createShared(Request, sizeof(Request))
-    echo "ok you've been sent out!"
-
     toChannel[] = request
-    newChannel[].send(toChannel)
+    newChannel[].send((toChannel, id))
 
 proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
   ## inspired by TCB hehe
@@ -193,6 +208,7 @@ proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
   let eventHandl = addr epollData[0]
   
   while true:
+    ##HANDELS TCB CONNECTIONS. Closes after reply is sent from the processor.
     let request = socketChannel[].tryRecv()
     if request.dataAvailable:
       #CpuTime is used as a random, unique, nonrepeating, identifier
@@ -234,13 +250,13 @@ proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
 
         try:
           # the iid -- internal id --- is needed to figure out which channel to send the response to
+          let iid = cpuTime()
           var json = parseJson newMessage
-          let funct = json["func"].getStr()
-          let toSend = requestTemplate(funct, "http", json)
+          let toSend = newRPCRequest(tcp, iid, json)
 
           targetChannel.fromClient[].send(toSend)
 
-          pendingReplies[toSend.iid] = sfd
+          pendingReplies[iid] = sfd
         except:
           continue
 
@@ -248,7 +264,7 @@ proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
     let messages = readAllFromChannel targetChannel.toClient[]
     if messages.isNone(): continue
     for result in messages.get():
-      let replyId = result["iid"].getFloat()
+      let replyId = result.id
       if replyId notin pendingReplies:
         continue
       let sfd = pendingReplies[replyId]
@@ -257,7 +273,7 @@ proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
       let socket = connections[sfd]
       pendingReplies.del(replyId)
       try:
-        socket[].sendTCP($result)
+        socket[].sendTCP($(result.response.result))
       except:
         try: socket[].close()
         except: discard
@@ -301,7 +317,7 @@ proc tcpServer(a : (Port, string, ptr Channel[ptr Socket], bool, string)) =
 
 proc httpTest() = 
   let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
-  let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
+  let toClient = createShared(Channel[RPCResponse], sizeof(Channel[RPCResponse]))
   fromClient[].open()
   toClient[].open()
   let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
@@ -314,43 +330,49 @@ proc httpTest() =
     if data.dataAvailable:
       echo "ok got a request from a client sending my response!"
       let request = data.msg
-      let response = newJObject()
-      response["iid"] = newJFloat request.iid
-      response["big step"] = newJBool true
-      biChannel.toClient[].send(response)
-    sleep 500
-  
-proc tcpTest() = 
-  let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
-  let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
-  let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
 
-  socketChannel[].open()
-  fromClient[].open()
-  toClient[].open()
+      let response = AlbaBTCException(etype: API, timeCreated : now().toTime().toUnix(), external : JsonParsingError)
 
-  let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
+      let output = ApiResponse(isError: true, error : response, httpCode : 200)
 
-  let port = Port(5192)
-  let password = "!"
-  let isUnix = false
-  let path = ""
-    
-  var tcpThread : Thread[(Port, string, ptr Channel[ptr Socket], bool, string)]
-  var manageTcpConns : Thread[(ptr Channel[ptr Socket], BiChannel)]
-  
-  createThread(tcpThread, tcpServer, (port, password, socketChannel, false, "") )
-  createThread(manageTcpConns, manageTcpConn, (socketChannel, biChannel))
-  
-  sleep 100
-  var testObj = newJObject()
-  testObj["test"] = newJInt 0
-  let testSocket = newSocket()
-  testSocket.connect("127.0.0.1", port) 
-  testSocket.sendTCP($testObj)
-  sleep 100
-  let obj = fromClient[].tryRecv.msg
-  toClient[].send(newJObject())
-  echo testSocket.recvTCP()
+      let toOutput = makeRPCResponse(output, request.id)
 
-tcpTest()
+      biChannel.toClient[].send(toOutput)
+    sleep 50
+#
+# proc tcpTest()= 
+#   let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
+#   let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
+#   let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
+#
+#   socketChannel[].open()
+#   fromClient[].open()
+#   toClient[].open()
+#
+#   let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
+#
+#   let port = Port(5192)
+#   let password = "!"
+#   let isUnix = false
+#   let path = ""
+#
+#   var tcpThread : Thread[(Port, string, ptr Channel[ptr Socket], bool, string)]
+#   var manageTcpConns : Thread[(ptr Channel[ptr Socket], BiChannel)]
+#
+#   createThread(tcpThread, tcpServer, (port, password, socketChannel, false, "") )
+#   createThread(manageTcpConns, manageTcpConn, (socketChannel, biChannel))
+#
+#   sleep 100
+#   var testObj = newJObject()
+#   testObj["test"] = newJInt 0
+#   let testSocket = newSocket()
+#   testSocket.connect("127.0.0.1", port) 
+#   testSocket.sendTCP($testObj)
+#   sleep 100
+#   let obj = fromClient[].tryRecv.msg
+#   toClient[].send(newJObject())
+#   echo testSocket.recvTCP()
+#
+# tcpTest()
+
+httpTest()

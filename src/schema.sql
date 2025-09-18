@@ -36,7 +36,8 @@ CREATE TABLE DepositRequest (
     -- successful =  (Finished  && !Expired && IsActive)
  
     TimeStarted time NOT NULL DEFAULT (strftime('%s','now')),
-    TimeEnded timestamp null
+    TimeEnded timestamp null,
+    Callback string
 );
 
 -- drop table DepositEvent;
@@ -115,8 +116,7 @@ create table LndInvoicePaid(
   TimePaid time,
   PubKeyPaid string,
   PaymentAddr string,
-  PubKey string,
-  callback text
+  PubKey string
 );
 
 create table LndChannelOpened(
@@ -145,6 +145,7 @@ create table LndChannelClose(
   CloseType string,
   Closer string,
   ClosedTime time NOT NULL DEFAULT (strftime('%s','now')),
+  callback text
 );
 
 

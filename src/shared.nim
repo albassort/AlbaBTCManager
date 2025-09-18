@@ -13,19 +13,18 @@ type
 
     LndFailedToGetInfo = "LndFailedToGetInfo", LndBadFundAmt = "LndBadFundAmmt"
   APIException* = enum
-    JsonParsingError = "JsonParsingError"
+    JsonParsingError = "JsonParsingError", ParamParsingError = "AlbaBTCException", AmtRequiredButNotGiven = "AmtRequiredButNotGiven", UserDoesntExist = "UserDoesntExist", FailedToCreateDepositRequest = "FailedToCreateDepositRequest", UnknownInternalError = ""
   CoinType* = enum
     BTC = "BTC"
   CryptoClients* = object
     btcClient* : options.Option[BTCClient]
-  EType = enum
+  EType* = enum
     Internal, LND, Curl, API 
-
   AlbaBTCException* = object
-    timeCreated : int64 
-    case etype: EType
+    timeCreated* : int64 
+    case etype*: EType
     of Internal:
-      error : Exceptions
+      error* : Exceptions
     of LND:
       code* : int
       message* : string
@@ -34,7 +33,29 @@ type
       libcurlError* : Code
     of API:
       external* : APIException
+  ApiResponse* = object
+    httpCode* : int
+    case isError*: bool
+    of true: 
+      error* : AlbaBTCException
+    of false: 
+      result* : JsonNode
+  Sources* = enum
+    http, tcp
+  RPCRequest* = object
+    source* : Sources
+    timeRecieved* : int64
+    id* : float
+    body* : JsonNode
 
+  RPCResponse* = object
+    response* : ApiResponse
+    id* : float
+
+proc makeRPCResponse*(a : ApiResponse, b : float64) : RPCResponse =  
+  result.response = a 
+  result.id = b
+  
 proc albaBTCException*(error : Exceptions): AlbaBTCException =
    result.timeCreated = now().toTime().toUnix
    result.error = error
