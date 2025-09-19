@@ -13,6 +13,7 @@ import std/endians
 import middle
 import ./shared
 import jsony
+import ./api
 
 type BiChannel = object
   fromClient* : ptr Channel[RPCRequest]
@@ -146,7 +147,7 @@ proc handleHttpRequest(a : (ptr Channel[RPCResponse], ptr Channel[(ptr Request, 
       pendingRequest.del(response.id)
       freeShared(reqeust)
 
-    seep 50
+    sleep 50
 
 proc httpServer(a : (Port, string, BiChannel)) {.gcsafe, thread.} =
   let socket = newSocket()
@@ -273,7 +274,7 @@ proc manageTcpConn(a : (ptr Channel[ptr Socket], BiChannel)) {.thread.} =
       let socket = connections[sfd]
       pendingReplies.del(replyId)
       try:
-        socket[].sendTCP($(result.response.result))
+        socket[].sendTCP(toJson (result.response))
       except:
         try: socket[].close()
         except: discard
@@ -308,8 +309,6 @@ proc tcpServer(a : (Port, string, ptr Channel[ptr Socket], bool, string)) =
     var address : string
     socket.acceptAddr(client, address)
 
-    #TODO: Check CREDENTIALS 
-    #
     var shared = createShared(Socket, sizeof(Socket))
     shared[] = client
     socketChannel[].send(shared)
@@ -317,14 +316,15 @@ proc tcpServer(a : (Port, string, ptr Channel[ptr Socket], bool, string)) =
 
 proc httpTest() = 
   let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
-  let toClient = createShared(Channel[RPCResponse], sizeof(Channel[RPCResponse]))
+  let toClientHttp = createShared(Channel[RPCResponse], sizeof(Channel[RPCResponse]))
   fromClient[].open()
-  toClient[].open()
-  let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
+  toClientHttp[].open()
+  let biChannel = BiChannel(fromClient : fromClient, toClient : toClientHttp)
 
   let port = Port(5080)
   var t : Thread[(Port, string, BiChannel)]
   createThread(t, httpServer, (port, "!", biChannel))
+
   while true:
     let data = biChannel.fromClient[].tryRecv
     if data.dataAvailable:
@@ -339,40 +339,120 @@ proc httpTest() =
 
       biChannel.toClient[].send(toOutput)
     sleep 50
-#
-# proc tcpTest()= 
-#   let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
-#   let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
-#   let toClient = createShared(Channel[JsonNode], sizeof(Channel[JsonNode]))
-#
-#   socketChannel[].open()
-#   fromClient[].open()
-#   toClient[].open()
-#
-#   let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
-#
-#   let port = Port(5192)
-#   let password = "!"
-#   let isUnix = false
-#   let path = ""
-#
-#   var tcpThread : Thread[(Port, string, ptr Channel[ptr Socket], bool, string)]
-#   var manageTcpConns : Thread[(ptr Channel[ptr Socket], BiChannel)]
-#
-#   createThread(tcpThread, tcpServer, (port, password, socketChannel, false, "") )
-#   createThread(manageTcpConns, manageTcpConn, (socketChannel, biChannel))
-#
-#   sleep 100
-#   var testObj = newJObject()
-#   testObj["test"] = newJInt 0
-#   let testSocket = newSocket()
-#   testSocket.connect("127.0.0.1", port) 
-#   testSocket.sendTCP($testObj)
-#   sleep 100
-#   let obj = fromClient[].tryRecv.msg
-#   toClient[].send(newJObject())
-#   echo testSocket.recvTCP()
-#
-# tcpTest()
 
-httpTest()
+proc tcpTest()= 
+  let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
+  let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
+  let toClient = createShared(Channel[RPcResponse], sizeof(Channel[RPCResponse]))
+
+  socketChannel[].open()
+  fromClient[].open()
+  toClient[].open()
+
+  let biChannel = BiChannel(fromClient : fromClient, toClient : toClient)
+
+  let port = Port(5192)
+  let password = "!"
+  let isUnix = false
+  let path = ""
+
+  var tcpThread : Thread[(Port, string, ptr Channel[ptr Socket], bool, string)]
+  var manageTcpConns : Thread[(ptr Channel[ptr Socket], BiChannel)]
+
+  createThread(tcpThread, tcpServer, (port, password, socketChannel, false, "") )
+  createThread(manageTcpConns, manageTcpConn, (socketChannel, biChannel))
+
+  sleep 100
+  var testObj = newJObject()
+  testObj["test"] = newJInt 0
+  let testSocket = newSocket()
+  testSocket.connect("127.0.0.1", port) 
+  testSocket.sendTCP($testObj)
+
+  sleep 100
+
+  let response = AlbaBTCException(etype: API, timeCreated : now().toTime().toUnix(), external : JsonParsingError)
+
+  let output = ApiResponse(isError: true, error : response, httpCode : 200)
+
+  let obj = fromClient[].tryRecv.msg
+  let toOutput = makeRPCResponse(output, obj.id)
+
+  toClient[].send(toOutput)
+
+  echo testSocket.recvTCP()
+
+proc runApi() = 
+  discard ""
+
+  # The architecture of a TCP and HTTP handler is as follows. 
+  # 1. A connection is received, each listener is on its own thread.
+  # 2. Its FD is copied into an object on shared memory, and sent to a function designed for holding the connection, and sending a response out when recieved
+  # 3. All connections feed into a main handler, which, which is this function, and is on the main handle. 
+
+  # This thread gets all the RCP reqeusts from all channels. All requests leads here.
+  let fromClient = createShared(Channel[RPCRequest], sizeof(Channel[RPCRequest]))
+
+  let password = "!"
+  let httpPort = Port(5080)
+  var httpThread : Thread[(Port, string, BiChannel)]
+  
+  # This thread directs to HTTP handler channel. The response is sent to the desired client, and, the connection is closed, the socket is dealloced
+  let toClientHttp = createShared(Channel[RPCResponse], sizeof(Channel[RPCResponse]))
+
+  fromClient[].open()
+  toClientHttp[].open()
+
+  # 
+  let httpBiChannel = BiChannel(fromClient : fromClient, toClient : toClientHttp)
+
+  createThread(httpThread, httpServer, (httpPort, password, httpBiChannel))
+
+  sleep 1000
+
+
+  # Inits TCP clients
+
+  # This channel holds TCP sockets and handles the responses. We handle the channel, so we can support multiple TCP channels. Because, once established, TCP channels are mostly function agnostic.
+  let socketChannel = createShared(Channel[ptr Socket], sizeof(Channel[ptr Socket]))
+
+  # This connects to the TCP manager. All messages are sent to where the sockets are stored NOT to where the TCP connections are handled.
+  let toClientTcp = createShared(Channel[RPCResponse], sizeof(Channel[RPCResponse]))
+
+  let tcpBiChannel = BiChannel(fromClient : fromClient, toClient : toClientTcp)
+
+
+  let tcpPort = Port(5192)
+  let isUnix = false
+  let path = ""
+
+  var tcpThread : Thread[(Port, string, ptr Channel[ptr Socket], bool, string)]
+  var manageTcpConns : Thread[(ptr Channel[ptr Socket], BiChannel)]
+  createThread(tcpThread, tcpServer, (tcpPort, password, socketChannel, isUnix, path) )
+
+  # This thread manages all the open TCP channels. Messages are sent to them, and they are closed.
+  createThread(manageTcpConns, manageTcpConn, (socketChannel, tcpBiChannel))
+
+  sleep 1000
+
+  echo "API running!"
+
+  while true:
+    let request = fromClient[].tryRecv()
+    let rpcRequest = 
+      if request.dataAvailable:
+        request.msg
+      else:
+        sleep 50
+        continue 
+
+    let param = rpcRequest.body["func"].getStr()
+    if param notin endPoints: 
+      #TODO: send rpc not found
+      continue
+    let rpcCall = endPoints[param]
+    echo param
+    
+runApi()
+# tcpTest()
+# httpTest()

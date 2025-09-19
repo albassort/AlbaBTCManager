@@ -273,4 +273,4 @@ let endPoints* = {
   "lndCloseChannel" : apiCloseChannel, 
   "btcNewDeposit" : apiBtcNewDeposit, 
   "btcWithdrawalRequest" : apiNewWithdrawalRequest,
-}
+}.toTable()
