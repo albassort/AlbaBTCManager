@@ -450,6 +450,7 @@ proc runApi() =
     if param notin endPoints: 
       #TODO: send rpc not found
       continue
+
     let rpcCall = endPoints[param]
     echo param
     

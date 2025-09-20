@@ -59,10 +59,10 @@ callbacks:
         newBlockConfirmed: ""
         newUTXOUnlocked: ""
   smtp:
-    username: ""
+    username: "carolinemarceano@albassort.com"
     password: ""
-    port: 0
-    address: ""
+    port: 587
+    address: "heracles.mxrouting.net"
     callbacks:
       deposits:
         noChange: ""
@@ -94,7 +94,7 @@ callbacks:
     defaultMail: ""
     useDefaultMail: false
     useTLS: false
-    useAuth: false
+    useAuth: true
   tcp:
     ip: ""
     port: ""
@@ -218,7 +218,6 @@ callbacks:
       xmr:
         newBlockConfirmed: false
         newUTXOUnlocked: false
-
 btcCore:
   rpcIp: "http://127.0.0.1"
   rpcPort: 18011

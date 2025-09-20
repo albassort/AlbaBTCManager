@@ -56,7 +56,6 @@ type
   State* = object
     lndMacroon : string
 
-echo "starting clients"
 var discordThread : Thread[(string, cint)]
 let smtpConn = newSmtp(debug=true)
 var namedPipe : FIleSTream
@@ -89,9 +88,11 @@ proc initMessageManager(config : Config) : MessageHandler =
     result.locationRoutes[SendDiscord] = discordTable
 
   if smtpConfig.address != "":
+    echo "Configuring SMTP!"
     block SMTPInit:
       try:
         smtpConn.connect(smtpConfig.address, Port smtpConfig.port)
+        echo "Sucessfully connected"
       except CatchableError as e:
         echo "failed to connect to SMTP SERVER"
         quit 1
@@ -101,6 +102,7 @@ proc initMessageManager(config : Config) : MessageHandler =
         except CatchableError as e:
           echo "Failed to start TLS on SMTP server"
           quit 1
+      echo "tls started"
       if smtpConfig.useAuth:
         try:
           smtpConn.auth(smtpConfig.username, smtpConfig.password)
@@ -118,6 +120,7 @@ proc initMessageManager(config : Config) : MessageHandler =
     let smtpRouting = assignCallBacks(smtpConfig, defaultAddress)
     result.locationRoutes[SendSMTP] = smtpRouting
     result.callbacksEnabled.incl(SendSMTP)
+    echo "SMTP started sucessfully"
 
   if config.callbacks.namedPipe.path != "":
     let permissions = 0o0644.uint32
@@ -229,7 +232,7 @@ const schema = staticRead("./schema.sql")
 var db* : DbConn
 proc init() = 
   echo initMessageManager(globalConfig[])
-
+  quit()
   if not fileExists(globalConfig[].db.sqliteDbPath):
 
     db = open(globalConfig[].db.sqliteDbPath, globalConfig[].db.username, globalConfig[].db.password, globalConfig[].db.database)
